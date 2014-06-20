@@ -5,7 +5,7 @@ Pod::Spec.new do |s|
   s.homepage     = "https://github.com/piemonte/PBJVision"
   s.license      = "MIT"
   s.authors      = { "Patrick Piemonte" => "piemonte@alumni.cmu.edu" }
-  s.source       = { :git => "https://github.com/piemonte/PBJVision.git", :tag => "v0.3.0" }
+  s.source       = { :git => "https://github.com/smule/PBJVision.git" }
   s.frameworks   = 'Foundation', 'AVFoundation', 'CoreGraphics', 'CoreMedia', 'CoreVideo', 'MobileCoreServices', 'ImageIO', 'QuartzCore', 'OpenGLES', 'UIKit'
   s.platform     = :ios, '6.0'
   s.source_files = 'Source'
