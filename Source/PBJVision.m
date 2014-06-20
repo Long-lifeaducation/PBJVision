@@ -1612,45 +1612,56 @@ typedef void (^PBJVisionBlock)();
     return [self supportsVideoCapture] && [self isCaptureSessionActive] && !_flags.changingModes && isDiskSpaceAvailable;
 }
 
-- (void)startVideoCapture
+- (void)setupVideoCapture
 {
     if (![self _canSessionCaptureWithOutput:_currentOutput]) {
         DLog(@"session is not setup properly for capture");
         return;
     }
     
-    DLog(@"starting video capture");
-        
-    [self _enqueueBlockOnCaptureVideoQueue:^{
-
-        if (_flags.recording || _flags.paused)
+    DLog(@"setting up video capture");
+    
+    if (_flags.recording || _flags.paused)
+        return;
+    
+    NSString *guid = [[NSUUID new] UUIDString];
+    NSString *outputPath = [NSString stringWithFormat:@"%@video_%@.mp4", NSTemporaryDirectory(), guid];
+    NSURL *outputURL = [NSURL fileURLWithPath:outputPath];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:outputPath]) {
+        NSError *error = nil;
+        if (![[NSFileManager defaultManager] removeItemAtPath:outputPath error:&error]) {
+            DLog(@"could not setup an output file");
             return;
-	
-        NSString *guid = [[NSUUID new] UUIDString];
-        NSString *outputPath = [NSString stringWithFormat:@"%@video_%@.mp4", NSTemporaryDirectory(), guid];
-        NSURL *outputURL = [NSURL fileURLWithPath:outputPath];
-        if ([[NSFileManager defaultManager] fileExistsAtPath:outputPath]) {
-            NSError *error = nil;
-            if (![[NSFileManager defaultManager] removeItemAtPath:outputPath error:&error]) {
-                DLog(@"could not setup an output file");
-                return;
-            }
         }
+    }
+    
+    if (!outputPath || [outputPath length] == 0)
+        return;
+    
+    if (_mediaWriter)
+        _mediaWriter.delegate = nil;
+    
+    _mediaWriter = [[PBJMediaWriter alloc] initWithOutputURL:outputURL];
+    _mediaWriter.delegate = self;
+    
+    AVCaptureConnection *videoConnection = [_captureOutputVideo connectionWithMediaType:AVMediaTypeVideo];
+    [self _setOrientationForConnection:videoConnection];
+    
+    _flags.videoWritten = NO;
+}
 
-        if (!outputPath || [outputPath length] == 0)
-            return;
-
-        if (_mediaWriter)
-            _mediaWriter.delegate = nil;
-        
-        _mediaWriter = [[PBJMediaWriter alloc] initWithOutputURL:outputURL];
-        _mediaWriter.delegate = self;
-
-        AVCaptureConnection *videoConnection = [_captureOutputVideo connectionWithMediaType:AVMediaTypeVideo];
-        [self _setOrientationForConnection:videoConnection];
-
+- (void)startVideoCapture
+{
+    if (!_mediaWriter) {
+        [self setupVideoCapture];
+    }
+    
+    DLog(@"starting video capture");
+    
+    [self _enqueueBlockOnCaptureVideoQueue:^{
         _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
-        _lastTimestamp = kCMTimeInvalid;
+        //_lastTimestamp = kCMTimeInvalid;
+        _lastTimestamp = _startTimestamp;
         
         _flags.recording = YES;
         _flags.paused = NO;
@@ -1701,6 +1712,10 @@ typedef void (^PBJVisionBlock)();
         DLog(@"resuming video capture");
        
         _flags.paused = NO;
+        
+        if (!_flags.audioCaptureEnabled) {
+            _flags.interrupted = NO;
+        }
 
         [self _enqueueBlockOnMainQueue:^{
             if ([_delegate respondsToSelector:@selector(visionDidResumeVideoCapture:)])
@@ -1868,7 +1883,7 @@ typedef void (^PBJVisionBlock)();
         return;
     }
 
-    if (!_flags.recording || _flags.paused) {
+    if (!_flags.recording) {
         CFRelease(sampleBuffer);
         return;
     }
@@ -1890,7 +1905,7 @@ typedef void (^PBJVisionBlock)();
         DLog(@"ready for video (%d)", _mediaWriter.isVideoReady);
     }
 
-    BOOL isReadyToRecord = (_mediaWriter.isAudioReady && _mediaWriter.isVideoReady);
+    BOOL isReadyToRecord = (_mediaWriter.isVideoReady && (_mediaWriter.isAudioReady || !_flags.audioCaptureEnabled));
     if (!isReadyToRecord) {
         CFRelease(sampleBuffer);
         return;
@@ -1899,21 +1914,23 @@ typedef void (^PBJVisionBlock)();
     CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
 
     // calculate the length of the interruption
-    if (_flags.interrupted && isAudio) {
-        _flags.interrupted = NO;
-
+    if (_flags.paused || _flags.interrupted) {
         // calculate the appropriate time offset
         if (CMTIME_IS_VALID(currentTimestamp)) {
             if (CMTIME_IS_VALID(_lastTimestamp)) {
                 currentTimestamp = CMTimeSubtract(currentTimestamp, _lastTimestamp);
             }
             
-            CMTime offset = CMTimeSubtract(currentTimestamp, _mediaWriter.audioTimestamp);
+            CMTime offset = CMTimeSubtract(currentTimestamp, _mediaWriter.videoTimestamp);
             _lastTimestamp = (_lastTimestamp.value == 0) ? offset : CMTimeAdd(_lastTimestamp, offset);
             DLog(@"new calculated offset %f valid (%d)", CMTimeGetSeconds(_lastTimestamp), CMTIME_IS_VALID(_lastTimestamp));
         } else {
-            DLog(@"invalid audio timestamp, no offset update");
+            DLog(@"invalid timestamp, no offset update");
         }
+        
+        // just needed the timestamp...
+        CFRelease(sampleBuffer);
+        return;
     }
     
     CMSampleBufferRef bufferToWrite = NULL;
@@ -1940,6 +1957,9 @@ typedef void (^PBJVisionBlock)();
             if (time.value > _mediaWriter.videoTimestamp.value) {
                 [_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeVideo];
                 _flags.videoWritten = YES;
+            }
+            else {
+                DLog(@"buffer too early!  %lld %d / %lld %d", time.value, time.timescale, _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);
             }
             
             // process the sample buffer for rendering
