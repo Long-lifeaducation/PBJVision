@@ -115,6 +115,7 @@ static CGFloat const PBJVideoBitRate960x540 = 3750000 * 8;
 static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 @class EAGLContext;
+@class GLKView;
 @protocol PBJVisionDelegate;
 @interface PBJVision : NSObject
 
@@ -158,6 +159,9 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 @property (nonatomic, readonly) AVCaptureVideoPreviewLayer *previewLayer;
 @property (nonatomic, readonly) CGRect cleanAperture;
+
+@property (nonatomic, readonly) GLKView *filteredPreviewView;
+@property (nonatomic) CGRect filteredPreviewViewBounds;
 
 - (void)startPreview;
 - (void)stopPreview;

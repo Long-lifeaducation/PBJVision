@@ -29,7 +29,7 @@
 #import <UIKit/UIDevice.h>
 #import <MobileCoreServices/UTCoreTypes.h>
 
-#define LOG_WRITER 0
+#define LOG_WRITER 1
 #if !defined(NDEBUG) && LOG_WRITER
 #   define DLog(fmt, ...) NSLog((@"writer: " fmt), ##__VA_ARGS__);
 #else
@@ -41,6 +41,7 @@
     AVAssetWriter *_assetWriter;
 	AVAssetWriterInput *_assetWriterAudioIn;
 	AVAssetWriterInput *_assetWriterVideoIn;
+    AVAssetWriterInputPixelBufferAdaptor *_assetWriterInputPixelBufferAdaptor;
     
     NSURL *_outputURL;
     
@@ -194,6 +195,15 @@
                     [[videoCompressionProperties objectForKey:AVVideoAverageBitRateKey] floatValue],
                     (long)[[videoCompressionProperties objectForKey:AVVideoMaxKeyFrameIntervalKey] integerValue]);
 #endif
+        
+        // create a pixel buffer adaptor for the asset writer; we need to obtain pixel buffers for rendering later from its pixel buffer pool
+        _assetWriterInputPixelBufferAdaptor = [AVAssetWriterInputPixelBufferAdaptor assetWriterInputPixelBufferAdaptorWithAssetWriterInput:_assetWriterVideoIn sourcePixelBufferAttributes:
+                                               [NSDictionary dictionaryWithObjectsAndKeys:
+                                                [NSNumber numberWithInteger:kCVPixelFormatType_32BGRA], (id)kCVPixelBufferPixelFormatTypeKey,
+                                                videoSettings[AVVideoWidthKey], (id)kCVPixelBufferWidthKey,
+                                                videoSettings[AVVideoWidthKey], (id)kCVPixelBufferHeightKey,
+                                                (id)kCFBooleanTrue, (id)kCVPixelFormatOpenGLESCompatibility,
+                                                nil]];
 
 		if ([_assetWriter canAddInput:_assetWriterVideoIn]) {
 			[_assetWriter addInput:_assetWriterVideoIn];
@@ -211,20 +221,46 @@
     return _videoReady;
 }
 
+#pragma mark - 
+
+- (CVReturn)createPixelBufferFromPool:(CVPixelBufferRef*)renderedOutputPixelBuffer
+{
+    CVReturn err = CVPixelBufferPoolCreatePixelBuffer(nil, _assetWriterInputPixelBufferAdaptor.pixelBufferPool, renderedOutputPixelBuffer);
+    if (err || !renderedOutputPixelBuffer)
+    {
+        NSLog(@"Cannot obtain a pixel buffer from the buffer pool %d", err);
+    }
+    return err;
+}
+
 #pragma mark - sample buffer writing
+
+- (BOOL)startWritingAtTime:(CMTime)startTime
+{
+    BOOL didStart = NO;
+    if ( _assetWriter.status == AVAssetWriterStatusUnknown ) {
+        didStart = [_assetWriter startWriting];
+        if (didStart) {
+            [_assetWriter startSessionAtSourceTime:startTime];
+            _videoTimestamp = startTime;
+            DLog(@"started writing with status (%ld)", (long)_assetWriter.status);
+        } else {
+            DLog(@"error when starting to write (%@)", [_assetWriter error]);
+        }
+    }
+    return didStart;
+}
 
 - (void)writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType
 {
+    [self writeSampleBuffer:sampleBuffer ofType:mediaType withPixelBuffer:NULL];
+}
+
+- (void)writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType withPixelBuffer:(CVPixelBufferRef)filteredPixelBuffer
+{
 	if ( _assetWriter.status == AVAssetWriterStatusUnknown ) {
-    
-        if ([_assetWriter startWriting]) {
-            CMTime startTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-			[_assetWriter startSessionAtSourceTime:startTime];
-            DLog(@"started writing with status (%ld)", (long)_assetWriter.status);
-		} else {
-			DLog(@"error when starting to write (%@)", [_assetWriter error]);
-		}
-        
+        CMTime startTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+        [self startWritingAtTime:startTime];
 	}
     
     if ( _assetWriter.status == AVAssetWriterStatusFailed ) {
@@ -237,12 +273,24 @@
         CMTime timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
 		if (mediaType == AVMediaTypeVideo) {
 			if (_assetWriterVideoIn.readyForMoreMediaData) {
-				if ([_assetWriterVideoIn appendSampleBuffer:sampleBuffer]) {
-                    _videoTimestamp = timestamp;
-				} else {
-					DLog(@"writer error appending video (%@)", [_assetWriter error]);
+                if (filteredPixelBuffer) {
+                    if ([_assetWriterInputPixelBufferAdaptor appendPixelBuffer:filteredPixelBuffer withPresentationTime:timestamp]) {
+                        _videoTimestamp = timestamp;
+                        //DLog(@"videoTimestamp: %lld %d", _videoTimestamp.value, _videoTimestamp.timescale);
+                    } else {
+                        DLog(@"writer error appending video (%@)", [_assetWriter error]);
+                    }
+                } else {
+                    if ([_assetWriterVideoIn appendSampleBuffer:sampleBuffer]) {
+                        _videoTimestamp = timestamp;
+                        //DLog(@"videoTimestamp: %lld %d", _videoTimestamp.value, _videoTimestamp.timescale);
+                    } else {
+                        DLog(@"writer error appending video (%@)", [_assetWriter error]);
+                    }
                 }
-			}
+			} else {
+                DLog(@"writer error NOT readyForMoreMediaData");
+            }
 		} else if (mediaType == AVMediaTypeAudio) {
 			if (_assetWriterAudioIn.readyForMoreMediaData) {
 				if ([_assetWriterAudioIn appendSampleBuffer:sampleBuffer]) {

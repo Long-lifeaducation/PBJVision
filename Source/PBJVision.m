@@ -30,8 +30,9 @@
 
 #import <ImageIO/ImageIO.h>
 #import <OpenGLES/EAGL.h>
+#import <GLKit/GLKit.h>
 
-#define LOG_VISION 0
+#define LOG_VISION 1
 #ifndef DLog
 #if !defined(NDEBUG) && LOG_VISION
 #   define DLog(fmt, ...) NSLog((@"VISION: " fmt), ##__VA_ARGS__);
@@ -44,6 +45,8 @@ NSString * const PBJVisionErrorDomain = @"PBJVisionErrorDomain";
 
 static uint64_t const PBJVisionRequiredMinimumDiskSpaceInBytes = 49999872; // ~ 47 MB
 static CGFloat const PBJVisionThumbnailWidth = 160.0f;
+
+static CGColorSpaceRef sDeviceRgbColorSpace = NULL;
 
 // KVO contexts
 
@@ -131,6 +134,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     
     AVCaptureVideoPreviewLayer *_previewLayer;
     CGRect _cleanAperture;
+    GLKView *_filteredPreviewView;
 
     CMTime _startTimestamp;
     CMTime _lastTimestamp;
@@ -150,6 +154,14 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     CVOpenGLESTextureRef _lumaTexture;
     CVOpenGLESTextureRef _chromaTexture;
     CVOpenGLESTextureCacheRef _videoTextureCache;
+    
+    CIContext *_ciContext;
+    CIFilter *_filter;
+    
+    CGRect _filteredPreviewViewBounds;
+    
+    NSMutableArray *_previousSecondTimestamps;
+	Float64 _frameRate;
     
     // flags
     
@@ -654,6 +666,23 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         }
         [self _setupGL];
         
+        sDeviceRgbColorSpace = CGColorSpaceCreateDeviceRGB();
+        
+        NSDictionary *options = @{ (id)kCIContextWorkingColorSpace : (id)kCFNull };
+        _ciContext = [CIContext contextWithEAGLContext:_context options:options];
+        
+        _filter = [CIFilter filterWithName:@"CISepiaTone"];
+        [_filter setValue:@(1.0) forKey:@"inputIntensity"];
+        
+//        _filter = [CIFilter filterWithName:@"CIPixellate"];
+//        [_filter setValue:@(8.0) forKeyPath:@"inputScale"];
+        
+//        _filter = [CIFilter filterWithName:@"CIColorMatrix" keysAndValues:
+//                   @"inputRVector",    [CIVector vectorWithX:1.0 Y:0.02 Z:0.16],
+//                   @"inputGVector",    [CIVector vectorWithX:-0.13 Y:1.0 Z:0.12 ],
+//                   @"inputBVector",    [CIVector vectorWithX:0.23 Y:0.01 Z:1.0],
+//                   @"inputBiasVector", [CIVector vectorWithX:0 Y:0 Z:0], nil];
+        
         _captureSessionPreset = AVCaptureSessionPresetMedium;
 
         // Average bytes per second based on video dimensions
@@ -672,11 +701,38 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         _captureVideoDispatchQueue = dispatch_queue_create("PBJVisionVideo", DISPATCH_QUEUE_SERIAL); // protects capture
         
         _previewLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSession:nil];
+        _previewLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
+        
+        _filteredPreviewView = [[GLKView alloc] initWithFrame:CGRectZero context:_context];
+        _filteredPreviewView.enableSetNeedsDisplay = NO;
+        
+        // bind the frame buffer to get the frame buffer width and height;
+        // the bounds used by CIContext when drawing to a GLKView are in pixels (not points),
+        // hence the need to read from the frame buffer's width and height;
+        // in addition, since we will be accessing the bounds in another queue (_captureSessionQueue),
+        // we want to obtain this piece of information so that we won't be
+        // accessing _videoPreviewView's properties from another thread/queue
+        [_filteredPreviewView bindDrawable];
+        _filteredPreviewViewBounds = CGRectZero;
+        _filteredPreviewViewBounds.size.width = 180;//_filteredPreviewView.drawableWidth;
+        _filteredPreviewViewBounds.size.height = 180;//_filteredPreviewView.drawableHeight;
+        _filteredPreviewView.frame = _filteredPreviewViewBounds;
+        
+//        // because the native video image from the back camera is in UIDeviceOrientationLandscapeLeft (i.e. the home button is on the right), we need to apply a clockwise 90 degree transform so that we can draw the video preview as if we were in a landscape-oriented view; if you're using the front camera and you want to have a mirrored preview (so that the user is seeing themselves in the mirror), you need to apply an additional horizontal flip (by concatenating CGAffineTransformMakeScale(-1.0, 1.0) to the rotation transform)
+//        CGAffineTransform transform = CGAffineTransformMakeRotation(M_PI_2);
+        // apply the horizontal flip
+        CGAffineTransform transform = CGAffineTransformIdentity;
+        BOOL shouldMirror = YES;
+        if (shouldMirror)
+            transform = CGAffineTransformConcat(transform, CGAffineTransformMakeScale(-1.0, 1.0));
+        _filteredPreviewView.transform = transform;
         
         _maximumCaptureDuration = kCMTimeInvalid;
 
         [self setMirroringMode:PBJMirroringAuto];
-
+        
+        _previousSecondTimestamps = [[NSMutableArray alloc] init];
+        
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationWillEnterForeground:) name:@"UIApplicationWillEnterForegroundNotification" object:[UIApplication sharedApplication]];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidEnterBackground:) name:@"UIApplicationDidEnterBackgroundNotification" object:[UIApplication sharedApplication]];
     }
@@ -791,7 +847,7 @@ typedef void (^PBJVisionBlock)();
     [_captureOutputVideo setSampleBufferDelegate:self queue:_captureVideoDispatchQueue];
 
     // capture device initial settings
-    _videoFrameRate = 30;
+    _videoFrameRate = 15;
 
     // add notification observers
     NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
@@ -1912,6 +1968,15 @@ typedef void (^PBJVisionBlock)();
     }
 
     CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+    
+//    // need to start writing so we have the pixel buffer pool alloc'd and ready...
+//    if (!_flags.videoWritten) {
+//        [_mediaWriter startWritingAtTime:currentTimestamp];
+//        // TODO what if it doesn't start??
+//    }
+    
+//    [self calculateFramerateAtTimestamp:currentTimestamp];
+//    NSLog(@"fps: %f", _frameRate);
 
     // calculate the length of the interruption
     if (_flags.paused || _flags.interrupted) {
@@ -1948,26 +2013,34 @@ typedef void (^PBJVisionBlock)();
     if (isVideo && !_flags.interrupted) {
         
         if (bufferToWrite) {
-            // update video and the last timestamp
+            
             CMTime time = CMSampleBufferGetPresentationTimeStamp(bufferToWrite);
+            
+            // this seems necessary to make sure we have the pixel buffer pool alloc'd when we need it...
+            if (!_flags.videoWritten) {
+                [_mediaWriter startWritingAtTime:time];
+            }
+            
+            // process the sample buffer for rendering
+            CVPixelBufferRef filteredPixelBuffer = NULL;
+            if (_flags.videoRenderingEnabled) {
+                filteredPixelBuffer = [self _processSampleBuffer:bufferToWrite];
+            }
+            
+            // update video and the last timestamp
             CMTime duration = CMSampleBufferGetDuration(bufferToWrite);
             if (duration.value > 0)
                 time = CMTimeAdd(time, duration);
             
-            if (time.value > _mediaWriter.videoTimestamp.value) {
-                [_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeVideo];
+            if (!_flags.videoWritten || time.value > _mediaWriter.videoTimestamp.value) {
+                [_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeVideo withPixelBuffer:filteredPixelBuffer];
                 _flags.videoWritten = YES;
             }
             else {
                 DLog(@"buffer too early!  %lld %d / %lld %d", time.value, time.timescale, _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);
             }
             
-            // process the sample buffer for rendering
-            if (_flags.videoRenderingEnabled && _flags.videoWritten) {
-                [self _executeBlockOnMainQueue:^{
-                    [self _processSampleBuffer:bufferToWrite];
-                }];
-            }
+            CVPixelBufferRelease(filteredPixelBuffer);
             
             [self _enqueueBlockOnMainQueue:^{
                 if ([_delegate respondsToSelector:@selector(vision:didCaptureVideoSampleBuffer:)]) {
@@ -2023,6 +2096,26 @@ typedef void (^PBJVisionBlock)();
     
     CFRelease(sampleBuffer);
 
+}
+
+- (void)calculateFramerateAtTimestamp:(CMTime)timestamp
+{
+	[_previousSecondTimestamps addObject:[NSValue valueWithCMTime:timestamp]];
+    
+	CMTime oneSecond = CMTimeMake(1, 1);
+	CMTime oneSecondAgo = CMTimeSubtract(timestamp, oneSecond);
+    
+    //  while (CMTimeCompare([_previousSecondTimestamps[0] CMTimeValue], oneSecondAgo) < 0)
+    //    ;
+    
+	while(CMTIME_COMPARE_INLINE([[_previousSecondTimestamps objectAtIndex:0] CMTimeValue], <, oneSecondAgo))
+    {
+		[_previousSecondTimestamps removeObjectAtIndex:0];
+    }
+    
+	Float64 newRate = (Float64)[_previousSecondTimestamps count];
+    
+	_frameRate = (_frameRate + newRate) / 2;
 }
 
 #pragma mark - App NSNotifications
@@ -2287,93 +2380,151 @@ typedef void (^PBJVisionBlock)();
 
 // convert CoreVideo YUV pixel buffer (Y luminance and Cb Cr chroma) into RGB
 // processing is done on the GPU, operation WAY more efficient than converting on the CPU
-- (void)_processSampleBuffer:(CMSampleBufferRef)sampleBuffer
+- (CVPixelBufferRef)_processSampleBuffer:(CMSampleBufferRef)sampleBuffer
 {
     if (!_context)
-        return;
+        return NULL;
 
     if (!_videoTextureCache)
-        return;
+        return NULL;
 
     CVImageBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
 
     if (CVPixelBufferLockBaseAddress(imageBuffer, 0) != kCVReturnSuccess)
-        return;
-
+        return NULL;
+    
     [EAGLContext setCurrentContext:_context];
-
-    [self _cleanUpTextures];
-
-    size_t width = CVPixelBufferGetWidth(imageBuffer);
-    size_t height = CVPixelBufferGetHeight(imageBuffer);
-
-    // only bind the vertices once or if parameters change
     
-    if (_bufferWidth != width ||
-        _bufferHeight != height ||
-        _bufferDevice != _cameraDevice ||
-        _bufferOrientation != _cameraOrientation) {
-        
-        _bufferWidth = width;
-        _bufferHeight = height;
-        _bufferDevice = _cameraDevice;
-        _bufferOrientation = _cameraOrientation;
-        [self _setupBuffers];
-        
+    // null colorspace to avoid colormatching
+    NSDictionary *options = @{ (id)kCIImageColorSpace : (id)kCFNull };
+    CIImage *image = [CIImage imageWithCVPixelBuffer:imageBuffer options:options];
+    
+    CGRect sourceExtent = image.extent;
+    CGFloat sourceAspect = sourceExtent.size.width / sourceExtent.size.height;
+    CGFloat previewAspect = _filteredPreviewViewBounds.size.width  / _filteredPreviewViewBounds.size.height;
+    
+    // we want to maintain the aspect radio of the screen size, so we clip the video image
+    CGRect drawRect = sourceExtent;
+    if (sourceAspect > previewAspect)
+    {
+        // use full height of the video image, and center crop the width
+        drawRect.origin.x += (drawRect.size.width - drawRect.size.height * previewAspect) / 2.0;
+        drawRect.size.width = drawRect.size.height * previewAspect;
+    }
+    else
+    {
+        // use full width of the video image, and center crop the height
+        drawRect.origin.y += (drawRect.size.height - drawRect.size.width / previewAspect) / 2.0;
+        drawRect.size.height = drawRect.size.width / previewAspect;
     }
     
-    // always upload the texturs since the input may be changing
+//    image = [image imageByApplyingTransform:CGAffineTransformMakeRotation(-M_PI/2.0)];
+//    CGPoint origin = [image extent].origin;
+//    image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(-origin.x, -origin.y)];
     
-    CVReturn error = 0;
+    [_filter setValue:image forKey:kCIInputImageKey];
+    image = _filter.outputImage;
     
-    // Y-plane
-    glActiveTexture(GL_TEXTURE0);
-    error = CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
-                                                        _videoTextureCache,
-                                                        imageBuffer,
-                                                        NULL,
-                                                        GL_TEXTURE_2D,
-                                                        GL_RED_EXT,
-                                                        (GLsizei)_bufferWidth,
-                                                        (GLsizei)_bufferHeight,
-                                                        GL_RED_EXT,
-                                                        GL_UNSIGNED_BYTE,
-                                                        0,
-                                                        &_lumaTexture);
-    if (error) {
-        DLog(@"error CVOpenGLESTextureCacheCreateTextureFromImage (%d)", error);
+    [_filteredPreviewView bindDrawable];
+    
+//    // clear eagl view to grey
+//    glClearColor(1.0, 0.0, 0.0, 1.0);
+//    glClear(GL_COLOR_BUFFER_BIT);
+//    
+//    // set the blend mode to "source over" so that CI will use that
+//    glEnable(GL_BLEND);
+//    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    
+    [_ciContext drawImage:image inRect:_filteredPreviewViewBounds fromRect:drawRect];
+    
+    [_filteredPreviewView display];
+    
+    CVPixelBufferRef renderedOutputPixelBuffer = NULL;
+    
+    CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
+    if (!err && renderedOutputPixelBuffer)
+    {
+        // render the filtered image back to the pixel buffer (no locking needed as CIContext's render method will do that
+        //[_ciContext render:image toCVPixelBuffer:renderedOutputPixelBuffer bounds:[image extent] colorSpace:sDeviceRgbColorSpace];
+        [_ciContext render:image toCVPixelBuffer:renderedOutputPixelBuffer];
     }
     
-    glBindTexture(CVOpenGLESTextureGetTarget(_lumaTexture), CVOpenGLESTextureGetName(_lumaTexture));
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); 
+    CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
     
-    // UV-plane
-    glActiveTexture(GL_TEXTURE1);
-    error = CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
-                                                         _videoTextureCache,
-                                                         imageBuffer,
-                                                         NULL,
-                                                         GL_TEXTURE_2D,
-                                                         GL_RG_EXT,
-                                                         (GLsizei)(_bufferWidth * 0.5),
-                                                         (GLsizei)(_bufferHeight * 0.5),
-                                                         GL_RG_EXT,
-                                                         GL_UNSIGNED_BYTE,
-                                                         1,
-                                                         &_chromaTexture);
-    if (error) {
-        DLog(@"error CVOpenGLESTextureCacheCreateTextureFromImage (%d)", error);
-    }
+    return renderedOutputPixelBuffer;
     
-    glBindTexture(CVOpenGLESTextureGetTarget(_chromaTexture), CVOpenGLESTextureGetName(_chromaTexture));
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    
-    if (CVPixelBufferUnlockBaseAddress(imageBuffer, 0) != kCVReturnSuccess)
-        return;
-
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+//    [self _cleanUpTextures];
+//
+//    size_t width = CVPixelBufferGetWidth(imageBuffer);
+//    size_t height = CVPixelBufferGetHeight(imageBuffer);
+//
+//    // only bind the vertices once or if parameters change
+//    
+//    if (_bufferWidth != width ||
+//        _bufferHeight != height ||
+//        _bufferDevice != _cameraDevice ||
+//        _bufferOrientation != _cameraOrientation) {
+//        
+//        _bufferWidth = width;
+//        _bufferHeight = height;
+//        _bufferDevice = _cameraDevice;
+//        _bufferOrientation = _cameraOrientation;
+//        [self _setupBuffers];
+//        
+//    }
+//    
+//    // always upload the texturs since the input may be changing
+//    
+//    CVReturn error = 0;
+//    
+//    // Y-plane
+//    glActiveTexture(GL_TEXTURE0);
+//    error = CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
+//                                                        _videoTextureCache,
+//                                                        imageBuffer,
+//                                                        NULL,
+//                                                        GL_TEXTURE_2D,
+//                                                        GL_RED_EXT,
+//                                                        (GLsizei)_bufferWidth,
+//                                                        (GLsizei)_bufferHeight,
+//                                                        GL_RED_EXT,
+//                                                        GL_UNSIGNED_BYTE,
+//                                                        0,
+//                                                        &_lumaTexture);
+//    if (error) {
+//        DLog(@"error CVOpenGLESTextureCacheCreateTextureFromImage (%d)", error);
+//    }
+//    
+//    glBindTexture(CVOpenGLESTextureGetTarget(_lumaTexture), CVOpenGLESTextureGetName(_lumaTexture));
+//	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+//	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); 
+//    
+//    // UV-plane
+//    glActiveTexture(GL_TEXTURE1);
+//    error = CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
+//                                                         _videoTextureCache,
+//                                                         imageBuffer,
+//                                                         NULL,
+//                                                         GL_TEXTURE_2D,
+//                                                         GL_RG_EXT,
+//                                                         (GLsizei)(_bufferWidth * 0.5),
+//                                                         (GLsizei)(_bufferHeight * 0.5),
+//                                                         GL_RG_EXT,
+//                                                         GL_UNSIGNED_BYTE,
+//                                                         1,
+//                                                         &_chromaTexture);
+//    if (error) {
+//        DLog(@"error CVOpenGLESTextureCacheCreateTextureFromImage (%d)", error);
+//    }
+//    
+//    glBindTexture(CVOpenGLESTextureGetTarget(_chromaTexture), CVOpenGLESTextureGetName(_chromaTexture));
+//	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+//	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+//    
+//    if (CVPixelBufferUnlockBaseAddress(imageBuffer, 0) != kCVReturnSuccess)
+//        return;
+//
+//    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 }
 
 - (void)_cleanUpTextures

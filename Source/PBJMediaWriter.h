@@ -44,12 +44,16 @@
 - (BOOL)setupAudioOutputDeviceWithSettings:(NSDictionary *)audioSettings;
 - (BOOL)setupVideoOutputDeviceWithSettings:(NSDictionary *)videoSettings;
 
+- (CVReturn)createPixelBufferFromPool:(CVPixelBufferRef*)renderedOutputPixelBuffer;
+
 // write
 
 @property (nonatomic, readonly) CMTime audioTimestamp;
 @property (nonatomic, readonly) CMTime videoTimestamp;
 
 - (void)writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType;
+- (void)writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType withPixelBuffer:(CVPixelBufferRef)filteredPixelBuffer;
+- (BOOL)startWritingAtTime:(CMTime)startTime;
 - (void)finishWritingWithCompletionHandler:(void (^)(void))handler;
 
 @end
