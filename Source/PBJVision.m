@@ -671,11 +671,13 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         NSDictionary *options = @{ (id)kCIContextWorkingColorSpace : (id)kCFNull };
         _ciContext = [CIContext contextWithEAGLContext:_context options:options];
         
-        _filter = [CIFilter filterWithName:@"CISepiaTone"];
-        [_filter setValue:@(1.0) forKey:@"inputIntensity"];
+//        _filter = [CIFilter filterWithName:@"CISepiaTone"];
+//        [_filter setValue:@(1.0) forKey:@"inputIntensity"];
         
 //        _filter = [CIFilter filterWithName:@"CIPixellate"];
 //        [_filter setValue:@(8.0) forKeyPath:@"inputScale"];
+        
+        _filter = [CIFilter filterWithName:@"CIPhotoEffectProcess"];
         
 //        _filter = [CIFilter filterWithName:@"CIColorMatrix" keysAndValues:
 //                   @"inputRVector",    [CIVector vectorWithX:1.0 Y:0.02 Z:0.16],
@@ -721,11 +723,11 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 //        // because the native video image from the back camera is in UIDeviceOrientationLandscapeLeft (i.e. the home button is on the right), we need to apply a clockwise 90 degree transform so that we can draw the video preview as if we were in a landscape-oriented view; if you're using the front camera and you want to have a mirrored preview (so that the user is seeing themselves in the mirror), you need to apply an additional horizontal flip (by concatenating CGAffineTransformMakeScale(-1.0, 1.0) to the rotation transform)
 //        CGAffineTransform transform = CGAffineTransformMakeRotation(M_PI_2);
         // apply the horizontal flip
-        CGAffineTransform transform = CGAffineTransformIdentity;
-        BOOL shouldMirror = YES;
-        if (shouldMirror)
-            transform = CGAffineTransformConcat(transform, CGAffineTransformMakeScale(-1.0, 1.0));
-        _filteredPreviewView.transform = transform;
+//        CGAffineTransform transform = CGAffineTransformIdentity;
+//        BOOL shouldMirror = YES;
+//        if (shouldMirror)
+//            transform = CGAffineTransformConcat(transform, CGAffineTransformMakeScale(-1.0, 1.0));
+//        _filteredPreviewView.transform = transform;
         
         _maximumCaptureDuration = kCMTimeInvalid;
 
@@ -847,7 +849,7 @@ typedef void (^PBJVisionBlock)();
     [_captureOutputVideo setSampleBufferDelegate:self queue:_captureVideoDispatchQueue];
 
     // capture device initial settings
-    _videoFrameRate = 15;
+    _videoFrameRate = 24;
 
     // add notification observers
     NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
@@ -2421,6 +2423,11 @@ typedef void (^PBJVisionBlock)();
 //    image = [image imageByApplyingTransform:CGAffineTransformMakeRotation(-M_PI/2.0)];
 //    CGPoint origin = [image extent].origin;
 //    image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(-origin.x, -origin.y)];
+    
+    // manual mirroring!
+    CGSize size = [image extent].size;
+    image = [image imageByApplyingTransform:CGAffineTransformMakeScale(-1.0, 1.0)];
+    image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
     
     [_filter setValue:image forKey:kCIInputImageKey];
     image = _filter.outputImage;
