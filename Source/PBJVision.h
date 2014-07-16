@@ -260,6 +260,7 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 // preview
 
+- (void)visionSessionDidSetup:(PBJVision *)vision;
 - (void)visionSessionDidStartPreview:(PBJVision *)vision;
 - (void)visionSessionDidStopPreview:(PBJVision *)vision;
 

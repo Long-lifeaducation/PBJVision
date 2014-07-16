@@ -677,7 +677,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 //        _filter = [CIFilter filterWithName:@"CIPixellate"];
 //        [_filter setValue:@(8.0) forKeyPath:@"inputScale"];
         
-        _filter = [CIFilter filterWithName:@"CIPhotoEffectProcess"];
+//        _filter = [CIFilter filterWithName:@"CIPhotoEffectProcess"];
         
 //        _filter = [CIFilter filterWithName:@"CIColorMatrix" keysAndValues:
 //                   @"inputRVector",    [CIVector vectorWithX:1.0 Y:0.02 Z:0.16],
@@ -1200,6 +1200,12 @@ typedef void (^PBJVisionBlock)();
             _previewLayer.session = _captureSession;
             [self _setOrientationForConnection:_previewLayer.connection];
         }
+        
+        [self _enqueueBlockOnMainQueue:^{
+            if ([_delegate respondsToSelector:@selector(visionSessionDidSetup:)]) {
+                [_delegate visionSessionDidSetup:self];
+            }
+        }];
         
         if (![_captureSession isRunning]) {
             [_captureSession startRunning];
@@ -2429,8 +2435,10 @@ typedef void (^PBJVisionBlock)();
     image = [image imageByApplyingTransform:CGAffineTransformMakeScale(-1.0, 1.0)];
     image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
     
-    [_filter setValue:image forKey:kCIInputImageKey];
-    image = _filter.outputImage;
+    if (_filter) {
+        [_filter setValue:image forKey:kCIInputImageKey];
+        image = _filter.outputImage;
+    }
     
     [_filteredPreviewView bindDrawable];
     
