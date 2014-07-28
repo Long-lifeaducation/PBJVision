@@ -2067,14 +2067,14 @@ typedef void (^PBJVisionBlock)();
                 time = CMTimeAdd(time, duration);
 
             if (time.value > _mediaWriter.audioTimestamp.value) {
-                [_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeAudio];
+                //[_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeAudio];
             }
             
-            [self _enqueueBlockOnMainQueue:^{
+            //[self _enqueueBlockOnMainQueue:^{
                 if ([_delegate respondsToSelector:@selector(vision:didCaptureAudioSample:)]) {
                     [_delegate vision:self didCaptureAudioSample:bufferToWrite];
                 }
-            }];
+            //}];
         }
     }
     
