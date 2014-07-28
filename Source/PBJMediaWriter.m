@@ -154,28 +154,31 @@
 
 - (BOOL)setupAudioOutputDeviceWithSettings:(NSDictionary *)audioSettings
 {
-	if ([_assetWriter canApplyOutputSettings:audioSettings forMediaType:AVMediaTypeAudio]) {
+    //HACK
+    _audioReady = YES;
     
-		_assetWriterAudioIn = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeAudio outputSettings:audioSettings];
-		_assetWriterAudioIn.expectsMediaDataInRealTime = YES;
-        
-        DLog(@"prepared audio-in with compression settings sampleRate (%f) channels (%lu) bitRate (%ld)",
-                    [[audioSettings objectForKey:AVSampleRateKey] floatValue],
-                    (unsigned long)[[audioSettings objectForKey:AVNumberOfChannelsKey] unsignedIntegerValue],
-                    (long)[[audioSettings objectForKey:AVEncoderBitRateKey] integerValue]);
-        
-		if ([_assetWriter canAddInput:_assetWriterAudioIn]) {
-			[_assetWriter addInput:_assetWriterAudioIn];
-            _audioReady = YES;
-		} else {
-			DLog(@"couldn't add asset writer audio input");
-		}
-        
-	} else {
-    
-		DLog(@"couldn't apply audio output settings");
-        
-	}
+//	if ([_assetWriter canApplyOutputSettings:audioSettings forMediaType:AVMediaTypeAudio]) {
+//    
+//		_assetWriterAudioIn = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeAudio outputSettings:audioSettings];
+//		_assetWriterAudioIn.expectsMediaDataInRealTime = YES;
+//        
+//        DLog(@"prepared audio-in with compression settings sampleRate (%f) channels (%lu) bitRate (%ld)",
+//                    [[audioSettings objectForKey:AVSampleRateKey] floatValue],
+//                    (unsigned long)[[audioSettings objectForKey:AVNumberOfChannelsKey] unsignedIntegerValue],
+//                    (long)[[audioSettings objectForKey:AVEncoderBitRateKey] integerValue]);
+//        
+//		if ([_assetWriter canAddInput:_assetWriterAudioIn]) {
+//			[_assetWriter addInput:_assetWriterAudioIn];
+//            _audioReady = YES;
+//		} else {
+//			DLog(@"couldn't add asset writer audio input");
+//		}
+//        
+//	} else {
+//    
+//		DLog(@"couldn't apply audio output settings");
+//        
+//	}
     
     return _audioReady;
 }
