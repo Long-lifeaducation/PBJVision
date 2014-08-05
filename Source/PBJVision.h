@@ -162,6 +162,7 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 @property (nonatomic, readonly) GLKView *filteredPreviewView;
 @property (nonatomic) CGRect filteredPreviewViewBounds;
+@property (nonatomic) CIFilter *filter;
 
 - (void)startPreview;
 - (void)stopPreview;

@@ -156,7 +156,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     CVOpenGLESTextureCacheRef _videoTextureCache;
     
     CIContext *_ciContext;
-    CIFilter *_filter;
     
     CGRect _filteredPreviewViewBounds;
     
@@ -716,8 +715,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         // accessing _videoPreviewView's properties from another thread/queue
         [_filteredPreviewView bindDrawable];
         _filteredPreviewViewBounds = CGRectZero;
-        _filteredPreviewViewBounds.size.width = 180;//_filteredPreviewView.drawableWidth;
-        _filteredPreviewViewBounds.size.height = 180;//_filteredPreviewView.drawableHeight;
+        _filteredPreviewViewBounds.size.width = 640;//_filteredPreviewView.drawableWidth;
+        _filteredPreviewViewBounds.size.height = 640;//_filteredPreviewView.drawableHeight;
         _filteredPreviewView.frame = _filteredPreviewViewBounds;
         
 //        // because the native video image from the back camera is in UIDeviceOrientationLandscapeLeft (i.e. the home button is on the right), we need to apply a clockwise 90 degree transform so that we can draw the video preview as if we were in a landscape-oriented view; if you're using the front camera and you want to have a mirrored preview (so that the user is seeing themselves in the mirror), you need to apply an additional horizontal flip (by concatenating CGAffineTransformMakeScale(-1.0, 1.0) to the rotation transform)
