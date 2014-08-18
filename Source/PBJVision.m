@@ -1946,32 +1946,31 @@ typedef void (^PBJVisionBlock)();
         return;
     }
 
-    if (!_flags.recording) {
-        CFRelease(sampleBuffer);
-        return;
-    }
+    // need for previewing too
+//    if (!_flags.recording) {
+//        CFRelease(sampleBuffer);
+//        return;
+//    }
 
-    if (!_mediaWriter) {
-        CFRelease(sampleBuffer);
-        return;
-    }
-    
-    // setup media writer
     BOOL isAudio = (connection == [_captureOutputAudio connectionWithMediaType:AVMediaTypeAudio]);
     BOOL isVideo = (connection == [_captureOutputVideo connectionWithMediaType:AVMediaTypeVideo]);
-    if (isAudio && !_mediaWriter.isAudioReady) {
-        [self _setupMediaWriterAudioInputWithSampleBuffer:sampleBuffer];
-        DLog(@"ready for audio (%d)", _mediaWriter.isAudioReady);
-    }
-    if (isVideo && !_mediaWriter.isVideoReady) {
-        [self _setupMediaWriterVideoInputWithSampleBuffer:sampleBuffer];
-        DLog(@"ready for video (%d)", _mediaWriter.isVideoReady);
-    }
+    
+    if (_flags.recording) {
+        // setup media writer
+        if (isAudio && !_mediaWriter.isAudioReady) {
+            [self _setupMediaWriterAudioInputWithSampleBuffer:sampleBuffer];
+            DLog(@"ready for audio (%d)", _mediaWriter.isAudioReady);
+        }
+        if (isVideo && !_mediaWriter.isVideoReady) {
+            [self _setupMediaWriterVideoInputWithSampleBuffer:sampleBuffer];
+            DLog(@"ready for video (%d)", _mediaWriter.isVideoReady);
+        }
 
-    BOOL isReadyToRecord = (_mediaWriter.isVideoReady && (_mediaWriter.isAudioReady || !_flags.audioCaptureEnabled));
-    if (!isReadyToRecord) {
-        CFRelease(sampleBuffer);
-        return;
+        BOOL isReadyToRecord = (_mediaWriter.isVideoReady && (_mediaWriter.isAudioReady || !_flags.audioCaptureEnabled));
+        if (!isReadyToRecord) {
+            CFRelease(sampleBuffer);
+            return;
+        }
     }
 
     CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
