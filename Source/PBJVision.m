@@ -135,6 +135,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     AVCaptureVideoPreviewLayer *_previewLayer;
     CGRect _cleanAperture;
     GLKView *_filteredPreviewView;
+    GLKView *_filteredSmallPreviewView;
 
     CMTime _startTimestamp;
     CMTime _lastTimestamp;
@@ -150,14 +151,17 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     CGRect _presentationFrame;
 
     EAGLContext *_context;
+    EAGLContext *_contextPreview;
     PBJGLProgram *_program;
     CVOpenGLESTextureRef _lumaTexture;
     CVOpenGLESTextureRef _chromaTexture;
     CVOpenGLESTextureCacheRef _videoTextureCache;
     
     CIContext *_ciContext;
+    CIContext *_ciContextPreview;
     
     CGRect _filteredPreviewViewBounds;
+    CGRect _filteredSmallPreviewViewBounds;
     
     NSMutableArray *_previousSecondTimestamps;
 	Float64 _frameRate;
@@ -196,6 +200,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @synthesize mirroringMode = _mirroringMode;
 @synthesize outputFormat = _outputFormat;
 @synthesize context = _context;
+@synthesize contextPreview = _contextPreview;
 @synthesize presentationFrame = _presentationFrame;
 @synthesize captureSessionPreset = _captureSessionPreset;
 @synthesize audioBitRate = _audioBitRate;
@@ -663,12 +668,17 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         if (!_context) {
             DLog(@"failed to create GL context");
         }
+        _contextPreview = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
+        if (!_contextPreview) {
+            DLog(@"failed to create GL context");
+        }
         [self _setupGL];
         
         sDeviceRgbColorSpace = CGColorSpaceCreateDeviceRGB();
         
         NSDictionary *options = @{ (id)kCIContextWorkingColorSpace : (id)kCFNull };
         _ciContext = [CIContext contextWithEAGLContext:_context options:options];
+        _ciContextPreview = [CIContext contextWithEAGLContext:_contextPreview options:options];
         
 //        _filter = [CIFilter filterWithName:@"CISepiaTone"];
 //        [_filter setValue:@(1.0) forKey:@"inputIntensity"];
@@ -677,6 +687,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 //        [_filter setValue:@(8.0) forKeyPath:@"inputScale"];
         
 //        _filter = [CIFilter filterWithName:@"CIPhotoEffectProcess"];
+        _filter = [CIFilter filterWithName:@"CIPhotoEffectChrome"];
         
 //        _filter = [CIFilter filterWithName:@"CIColorMatrix" keysAndValues:
 //                   @"inputRVector",    [CIVector vectorWithX:1.0 Y:0.02 Z:0.16],
@@ -718,6 +729,16 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         _filteredPreviewViewBounds.size.width = 640;//_filteredPreviewView.drawableWidth;
         _filteredPreviewViewBounds.size.height = 640;//_filteredPreviewView.drawableHeight;
         _filteredPreviewView.frame = _filteredPreviewViewBounds;
+        
+        [_filteredSmallPreviewView bindDrawable];
+        _filteredSmallPreviewView = [[GLKView alloc] initWithFrame:CGRectZero context:_contextPreview];
+        _filteredSmallPreviewView.enableSetNeedsDisplay = NO;
+        [_filteredSmallPreviewView bindDrawable];
+        _filteredSmallPreviewViewBounds = _filteredPreviewViewBounds;
+        static const float scale = 0.2;
+        _filteredSmallPreviewViewBounds.size.width = _filteredPreviewViewBounds.size.width * scale;
+        _filteredSmallPreviewViewBounds.size.height = _filteredPreviewViewBounds.size.height * scale;
+        _filteredSmallPreviewView.frame = _filteredSmallPreviewViewBounds;
         
 //        // because the native video image from the back camera is in UIDeviceOrientationLandscapeLeft (i.e. the home button is on the right), we need to apply a clockwise 90 degree transform so that we can draw the video preview as if we were in a landscape-oriented view; if you're using the front camera and you want to have a mirrored preview (so that the user is seeing themselves in the mirror), you need to apply an additional horizontal flip (by concatenating CGAffineTransformMakeScale(-1.0, 1.0) to the rotation transform)
 //        CGAffineTransform transform = CGAffineTransformMakeRotation(M_PI_2);
@@ -2451,6 +2472,25 @@ typedef void (^PBJVisionBlock)();
     [_ciContext drawImage:image inRect:_filteredPreviewViewBounds fromRect:drawRect];
     
     [_filteredPreviewView display];
+    
+    ////////////////////////
+    
+    [EAGLContext setCurrentContext:_contextPreview];
+
+    [_filteredSmallPreviewView bindDrawable];
+    
+//    // clear eagl view to grey
+//    glClearColor(1.0, 0.0, 0.0, 1.0);
+//    glClear(GL_COLOR_BUFFER_BIT);
+//    
+//    // set the blend mode to "source over" so that CI will use that
+//    glEnable(GL_BLEND);
+//    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    
+    [_ciContextPreview drawImage:image inRect:_filteredSmallPreviewViewBounds fromRect:drawRect];
+    [_filteredSmallPreviewView display];
+    
+    ////////////////////////
     
     CVPixelBufferRef renderedOutputPixelBuffer = NULL;
     
