@@ -2076,7 +2076,7 @@ typedef void (^PBJVisionBlock)();
             }];
         }
         
-    } else if (isAudio && !_flags.interrupted) {
+    } else if (isAudio && !_flags.interrupted && _flags.recording) {
 
         if (bufferToWrite && _flags.videoWritten) {
             // update the last audio timestamp
