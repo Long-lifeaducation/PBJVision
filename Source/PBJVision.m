@@ -750,8 +750,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 //        _filteredPreviewView.transform = transform;
         
         _maximumCaptureDuration = kCMTimeInvalid;
-
-        [self setMirroringMode:PBJMirroringAuto];
+        
+        [self setMirroringMode:PBJMirroringOff];
         
         _previousSecondTimestamps = [[NSMutableArray alloc] init];
         
