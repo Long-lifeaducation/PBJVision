@@ -2449,9 +2449,12 @@ typedef void (^PBJVisionBlock)();
 //    image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(-origin.x, -origin.y)];
     
     // manual mirroring!
-    CGSize size = [image extent].size;
-    image = [image imageByApplyingTransform:CGAffineTransformMakeScale(-1.0, 1.0)];
-    image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
+    if (_cameraDevice == PBJCameraDeviceFront)
+    {
+        CGSize size = [image extent].size;
+        image = [image imageByApplyingTransform:CGAffineTransformMakeScale(-1.0, 1.0)];
+        image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
+    }
     
     if (_filter) {
         [_filter setValue:image forKey:kCIInputImageKey];
