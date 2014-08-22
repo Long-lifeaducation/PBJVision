@@ -1796,10 +1796,7 @@ typedef void (^PBJVisionBlock)();
         DLog(@"resuming video capture");
        
         _flags.paused = NO;
-        
-        if (!_flags.audioCaptureEnabled) {
-            _flags.interrupted = NO;
-        }
+        _flags.interrupted = NO;
 
         [self _enqueueBlockOnMainQueue:^{
             if ([_delegate respondsToSelector:@selector(visionDidResumeVideoCapture:)])
@@ -2044,7 +2041,7 @@ typedef void (^PBJVisionBlock)();
             CMTime time = CMSampleBufferGetPresentationTimeStamp(bufferToWrite);
             
             // this seems necessary to make sure we have the pixel buffer pool alloc'd when we need it...
-            if (!_flags.videoWritten) {
+            if (_flags.recording && !_flags.videoWritten) {
                 [_mediaWriter startWritingAtTime:time];
             }
             
@@ -2054,20 +2051,22 @@ typedef void (^PBJVisionBlock)();
                 filteredPixelBuffer = [self _processSampleBuffer:bufferToWrite];
             }
             
-            // update video and the last timestamp
-            CMTime duration = CMSampleBufferGetDuration(bufferToWrite);
-            if (duration.value > 0)
-                time = CMTimeAdd(time, duration);
-            
-            if (!_flags.videoWritten || time.value > _mediaWriter.videoTimestamp.value) {
-                [_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeVideo withPixelBuffer:filteredPixelBuffer];
-                _flags.videoWritten = YES;
+            if (filteredPixelBuffer) {
+                // update video and the last timestamp
+                CMTime duration = CMSampleBufferGetDuration(bufferToWrite);
+                if (duration.value > 0)
+                    time = CMTimeAdd(time, duration);
+                
+                if (_flags.recording && (!_flags.videoWritten || time.value > _mediaWriter.videoTimestamp.value)) {
+                    [_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeVideo withPixelBuffer:filteredPixelBuffer];
+                    _flags.videoWritten = YES;
+                }
+                else {
+                    DLog(@"buffer too early!  %lld %d / %lld %d", time.value, time.timescale, _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);
+                }
+                
+                CVPixelBufferRelease(filteredPixelBuffer);
             }
-            else {
-                DLog(@"buffer too early!  %lld %d / %lld %d", time.value, time.timescale, _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);
-            }
-            
-            CVPixelBufferRelease(filteredPixelBuffer);
             
             [self _enqueueBlockOnMainQueue:^{
                 if ([_delegate respondsToSelector:@selector(vision:didCaptureVideoSampleBuffer:)]) {
@@ -2493,16 +2492,16 @@ typedef void (^PBJVisionBlock)();
     ////////////////////////
     
     CVPixelBufferRef renderedOutputPixelBuffer = NULL;
-    
-    CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
-    if (!err && renderedOutputPixelBuffer)
-    {
-        // render the filtered image back to the pixel buffer (no locking needed as CIContext's render method will do that
-        //[_ciContext render:image toCVPixelBuffer:renderedOutputPixelBuffer bounds:[image extent] colorSpace:sDeviceRgbColorSpace];
-        [_ciContext render:image toCVPixelBuffer:renderedOutputPixelBuffer];
+    if (_mediaWriter.videoReady) {
+        CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
+        if (!err && renderedOutputPixelBuffer)
+        {
+            // render the filtered image back to the pixel buffer (no locking needed as CIContext's render method will do that
+            //[_ciContext render:image toCVPixelBuffer:renderedOutputPixelBuffer bounds:[image extent] colorSpace:sDeviceRgbColorSpace];
+            [_ciContext render:image toCVPixelBuffer:renderedOutputPixelBuffer];
+        }
+        CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
     }
-    
-    CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
     
     return renderedOutputPixelBuffer;
     
