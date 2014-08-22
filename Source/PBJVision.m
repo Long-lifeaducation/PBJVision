@@ -572,6 +572,10 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
             }
         }
         
+        AVCaptureDeviceFormat *activeFormat = [_currentDevice activeFormat];
+        NSLog(@"%@", activeFormat);
+        NSLog(@"%@ %@ %@", activeFormat.mediaType, activeFormat.formatDescription, activeFormat.videoSupportedFrameRateRanges);
+        
         [self _enqueueBlockOnMainQueue:^{
             if ([_delegate respondsToSelector:@selector(visionDidChangeVideoFormatAndFrameRate:)])
                 [_delegate visionDidChangeVideoFormatAndFrameRate:self];
@@ -869,7 +873,7 @@ typedef void (^PBJVisionBlock)();
     [_captureOutputVideo setSampleBufferDelegate:self queue:_captureVideoDispatchQueue];
 
     // capture device initial settings
-    _videoFrameRate = 24;
+    _videoFrameRate = 30;
 
     // add notification observers
     NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
