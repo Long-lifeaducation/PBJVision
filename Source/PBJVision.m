@@ -1831,16 +1831,21 @@ typedef void (^PBJVisionBlock)();
             _lastTimestamp = kCMTimeInvalid;
             _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
             _flags.interrupted = NO;
-
+            
+            NSString *path = [_mediaWriter.outputURL path];
+            NSError *error = [_mediaWriter error];
+            _mediaWriter = nil;
+            
             [self _enqueueBlockOnMainQueue:^{
                 NSMutableDictionary *videoDict = [[NSMutableDictionary alloc] init];
-                NSString *path = [_mediaWriter.outputURL path];
                 if (path)
                     [videoDict setObject:path forKey:PBJVisionVideoPathKey];
+                else {
+                    NSLog(@"no recorded video!");
+                }
 
                 [videoDict setObject:@(capturedDuration) forKey:PBJVisionVideoCapturedDurationKey];
 
-                NSError *error = [_mediaWriter error];
                 if ([_delegate respondsToSelector:@selector(vision:capturedVideo:error:)]) {
                     [_delegate vision:self capturedVideo:videoDict error:error];
                 }
@@ -1862,6 +1867,8 @@ typedef void (^PBJVisionBlock)();
             _lastTimestamp = kCMTimeInvalid;
             _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
             _flags.interrupted = NO;
+            
+            _mediaWriter = nil;
 
             [self _enqueueBlockOnMainQueue:^{
                 NSError *error = [NSError errorWithDomain:PBJVisionErrorDomain code:PBJVisionErrorCancelled userInfo:nil];
