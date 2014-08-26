@@ -700,14 +700,14 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 //                   @"inputBiasVector", [CIVector vectorWithX:0 Y:0 Z:0], nil];
         
         //_captureSessionPreset = AVCaptureSessionPresetHigh;
-        _captureSessionPreset = AVCaptureSessionPreset640x480;
-        //_captureSessionPreset = AVCaptureSessionPresetMedium;
+        //_captureSessionPreset = AVCaptureSessionPreset640x480;
+        _captureSessionPreset = AVCaptureSessionPresetMedium;
         //_captureSessionPreset = AVCaptureSessionPresetLow;
 
         // Average bytes per second based on video dimensions
         // lower the bitRate, higher the compression
-        //_videoBitRate = PBJVideoBitRate480x360;
-        _videoBitRate = PBJVideoBitRate640x480;
+        _videoBitRate = PBJVideoBitRate480x360;
+        //_videoBitRate = PBJVideoBitRate640x480;
 
         // default audio/video configuration
         _audioBitRate = 64000;
