@@ -2509,6 +2509,8 @@ typedef void (^PBJVisionBlock)();
     
     ////////////////////////
     
+    CIImage* cropImage = [image imageByCroppingToRect:drawRect];
+    cropImage = [cropImage imageByApplyingTransform:CGAffineTransformMakeTranslation(0, -drawRect.origin.y)];
     CVPixelBufferRef renderedOutputPixelBuffer = NULL;
     if (_mediaWriter.videoReady) {
         CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
@@ -2516,7 +2518,7 @@ typedef void (^PBJVisionBlock)();
         {
             // render the filtered image back to the pixel buffer (no locking needed as CIContext's render method will do that
             //[_ciContext render:image toCVPixelBuffer:renderedOutputPixelBuffer bounds:[image extent] colorSpace:sDeviceRgbColorSpace];
-            [_ciContext render:image toCVPixelBuffer:renderedOutputPixelBuffer];
+            [_ciContext render:cropImage toCVPixelBuffer:renderedOutputPixelBuffer];
         }
         CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
     }
