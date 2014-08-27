@@ -1116,7 +1116,7 @@ typedef void (^PBJVisionBlock)();
             [videoConnection setEnablesVideoStabilizationWhenAvailable:YES];
 
         // discard late frames
-        [_captureOutputVideo setAlwaysDiscardsLateVideoFrames:NO];
+        [_captureOutputVideo setAlwaysDiscardsLateVideoFrames:YES];
         
         // specify video preset
         sessionPreset = _captureSessionPreset;
