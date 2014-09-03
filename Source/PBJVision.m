@@ -896,13 +896,13 @@ typedef void (^PBJVisionBlock)();
     [notificationCenter addObserver:self selector:@selector(_deviceSubjectAreaDidChange:) name:AVCaptureDeviceSubjectAreaDidChangeNotification object:nil];
 
     // current device KVO notifications
-    [self addObserver:self forKeyPath:@"currentDevice.adjustingFocus" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionFocusObserverContext];
-    [self addObserver:self forKeyPath:@"currentDevice.adjustingExposure" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionExposureObserverContext];
-    [self addObserver:self forKeyPath:@"currentDevice.adjustingWhiteBalance" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionWhiteBalanceObserverContext];
-    [self addObserver:self forKeyPath:@"currentDevice.flashMode" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionFlashModeObserverContext];
-    [self addObserver:self forKeyPath:@"currentDevice.torchMode" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionTorchModeObserverContext];
-    [self addObserver:self forKeyPath:@"currentDevice.flashAvailable" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionFlashAvailabilityObserverContext];
-    [self addObserver:self forKeyPath:@"currentDevice.torchAvailable" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionTorchAvailabilityObserverContext];
+//    [self addObserver:self forKeyPath:@"currentDevice.adjustingFocus" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionFocusObserverContext];
+//    [self addObserver:self forKeyPath:@"currentDevice.adjustingExposure" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionExposureObserverContext];
+//    [self addObserver:self forKeyPath:@"currentDevice.adjustingWhiteBalance" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionWhiteBalanceObserverContext];
+//    [self addObserver:self forKeyPath:@"currentDevice.flashMode" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionFlashModeObserverContext];
+//    [self addObserver:self forKeyPath:@"currentDevice.torchMode" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionTorchModeObserverContext];
+//    [self addObserver:self forKeyPath:@"currentDevice.flashAvailable" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionFlashAvailabilityObserverContext];
+//    [self addObserver:self forKeyPath:@"currentDevice.torchAvailable" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionTorchAvailabilityObserverContext];
 
     // KVO is only used to monitor focus and capture events
     [_captureOutputPhoto addObserver:self forKeyPath:@"capturingStillImage" options:NSKeyValueObservingOptionNew context:(__bridge void *)(PBJVisionCaptureStillImageIsCapturingStillImageObserverContext)];
@@ -917,13 +917,13 @@ typedef void (^PBJVisionBlock)();
         return;
     
     // current device KVO notifications
-    [self removeObserver:self forKeyPath:@"currentDevice.adjustingFocus"];
-    [self removeObserver:self forKeyPath:@"currentDevice.adjustingExposure"];
-    [self removeObserver:self forKeyPath:@"currentDevice.adjustingWhiteBalance"];
-    [self removeObserver:self forKeyPath:@"currentDevice.flashMode"];
-    [self removeObserver:self forKeyPath:@"currentDevice.torchMode"];
-    [self removeObserver:self forKeyPath:@"currentDevice.flashAvailable"];
-    [self removeObserver:self forKeyPath:@"currentDevice.torchAvailable"];
+//    [self removeObserver:self forKeyPath:@"currentDevice.adjustingFocus"];
+//    [self removeObserver:self forKeyPath:@"currentDevice.adjustingExposure"];
+//    [self removeObserver:self forKeyPath:@"currentDevice.adjustingWhiteBalance"];
+//    [self removeObserver:self forKeyPath:@"currentDevice.flashMode"];
+//    [self removeObserver:self forKeyPath:@"currentDevice.torchMode"];
+//    [self removeObserver:self forKeyPath:@"currentDevice.flashAvailable"];
+//    [self removeObserver:self forKeyPath:@"currentDevice.torchAvailable"];
 
     // remove notification observers (we don't want to just 'remove all' because we're also observing background notifications
     NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
