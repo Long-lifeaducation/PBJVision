@@ -1250,7 +1250,7 @@ typedef void (^PBJVisionBlock)();
 }
 
 - (void)stopPreview
-{    
+{
     [self _enqueueBlockOnCaptureSessionQueue:^{
         if (!_flags.previewRunning)
             return;
@@ -1260,6 +1260,8 @@ typedef void (^PBJVisionBlock)();
 
         if ([_captureSession isRunning])
             [_captureSession stopRunning];
+
+        [self clearPreviewView];
 
         [self _executeBlockOnMainQueue:^{
             if ([_delegate respondsToSelector:@selector(visionSessionDidStopPreview:)]) {
@@ -2418,6 +2420,29 @@ typedef void (^PBJVisionBlock)();
 }
 
 #pragma mark - sample buffer processing
+
+- (void)clearPreviewView
+{
+    [EAGLContext setCurrentContext:_context];
+    
+    [_filteredPreviewView bindDrawable];
+    
+    glClearColor(0.0, 0.0, 0.0, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT);
+    
+    [_filteredPreviewView display];
+    
+    /////////////
+    
+    [EAGLContext setCurrentContext:_contextPreview];
+    
+    [_filteredSmallPreviewView bindDrawable];
+    
+    glClearColor(0.0, 0.0, 0.0, 1.0);
+    glClear(GL_COLOR_BUFFER_BIT);
+    
+    [_filteredSmallPreviewView display];
+}
 
 // convert CoreVideo YUV pixel buffer (Y luminance and Cb Cr chroma) into RGB
 // processing is done on the GPU, operation WAY more efficient than converting on the CPU
