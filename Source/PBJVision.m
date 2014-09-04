@@ -208,6 +208,20 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @synthesize additionalCompressionProperties = _additionalCompressionProperties;
 @synthesize maximumCaptureDuration = _maximumCaptureDuration;
 
+#include <sys/types.h>
+#include <sys/sysctl.h>
+
++ (NSString*)hardwareString
+{
+    size_t size = 100;
+    char *hw_machine = malloc(size);
+    int name[] = {CTL_HW,HW_MACHINE};
+    sysctl(name, 2, hw_machine, &size, NULL, 0);
+    NSString *hardware = [NSString stringWithUTF8String:hw_machine];
+    free(hw_machine);
+    return hardware;
+}
+
 #pragma mark - singleton
 
 + (PBJVision *)sharedInstance
@@ -878,7 +892,16 @@ typedef void (^PBJVisionBlock)();
 
     // capture device initial settings
     _videoFrameRate = 30;
-
+    
+    self.filteringEnabled = NO;
+    NSString *currentHardware = [PBJVision hardwareString];
+    for (NSString *device in @[@"iPhone6", @"iPad3"]) {
+        if ([currentHardware hasPrefix:device]) {
+            self.filteringEnabled = YES;
+            break;
+        }
+    }
+    
     // add notification observers
     NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
     
@@ -2029,7 +2052,7 @@ typedef void (^PBJVisionBlock)();
             
             CMTime offset = CMTimeSubtract(currentTimestamp, _mediaWriter.videoTimestamp);
             _lastTimestamp = (_lastTimestamp.value == 0) ? offset : CMTimeAdd(_lastTimestamp, offset);
-            DLog(@"new calculated offset %f valid (%d)", CMTimeGetSeconds(_lastTimestamp), CMTIME_IS_VALID(_lastTimestamp));
+            //DLog(@"new calculated offset %f valid (%d)", CMTimeGetSeconds(_lastTimestamp), CMTIME_IS_VALID(_lastTimestamp));
         } else {
             DLog(@"invalid timestamp, no offset update");
         }
@@ -2496,7 +2519,8 @@ typedef void (^PBJVisionBlock)();
         image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
     }
     
-    if (_filter) {
+    if (_filter && _filteringEnabled)
+    {
         [_filter setValue:image forKey:kCIInputImageKey];
         image = _filter.outputImage;
     }
