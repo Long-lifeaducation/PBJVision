@@ -1896,7 +1896,15 @@ typedef void (^PBJVisionBlock)();
             _lastTimestamp = kCMTimeInvalid;
             _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
             _flags.interrupted = NO;
-            
+
+            NSString *path = [_mediaWriter.outputURL path];
+            if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
+                NSError *error = nil;
+                if (![[NSFileManager defaultManager] removeItemAtPath:path error:&error]) {
+                    DLog(@"could not setup an output file");
+                }
+            }
+
             _mediaWriter = nil;
 
             [self _enqueueBlockOnMainQueue:^{
