@@ -2296,9 +2296,12 @@ typedef void (^PBJVisionBlock)();
 
 - (void)_sessionWasInterrupted:(NSNotification *)notification
 {
-    [self _enqueueBlockOnMainQueue:^{
-        if ([notification object] != _captureSession)
-            return;
+    if ([notification object] != _captureSession)
+        return;
+    
+    [self _enqueueBlockOnCaptureVideoQueue:^{
+
+        _flags.interrupted = YES;
         
         DLog(@"session was interrupted");
         
@@ -2320,11 +2323,13 @@ typedef void (^PBJVisionBlock)();
 
 - (void)_sessionInterruptionEnded:(NSNotification *)notification
 {
-    [self _enqueueBlockOnMainQueue:^{
+    if ([notification object] != _captureSession)
+        return;
+
+    [self _enqueueBlockOnCaptureVideoQueue:^{
         
-        if ([notification object] != _captureSession)
-            return;
-        
+        _flags.interrupted = NO;
+
         DLog(@"session interruption ended");
         
         [self _enqueueBlockOnMainQueue:^{
