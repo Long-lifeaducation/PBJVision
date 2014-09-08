@@ -1258,6 +1258,8 @@ typedef void (^PBJVisionBlock)();
             }
         }];
         
+        [self clearPreviewView];
+        
         if (![_captureSession isRunning]) {
             [_captureSession startRunning];
             
@@ -1283,8 +1285,6 @@ typedef void (^PBJVisionBlock)();
 
         if ([_captureSession isRunning])
             [_captureSession stopRunning];
-
-        [self clearPreviewView];
 
         [self _executeBlockOnMainQueue:^{
             if ([_delegate respondsToSelector:@selector(visionSessionDidStopPreview:)]) {
