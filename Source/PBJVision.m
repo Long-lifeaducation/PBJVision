@@ -850,7 +850,9 @@ typedef void (^PBJVisionBlock)();
 
     // create session
     _captureSession = [[AVCaptureSession alloc] init];
-    
+
+    _captureSession.automaticallyConfiguresApplicationAudioSession = NO;
+
     // capture devices
     _captureDeviceFront = [PBJVisionUtilities captureDeviceForPosition:AVCaptureDevicePositionFront];
     _captureDeviceBack = [PBJVisionUtilities captureDeviceForPosition:AVCaptureDevicePositionBack];
