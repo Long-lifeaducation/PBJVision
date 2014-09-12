@@ -32,6 +32,9 @@
 #import <OpenGLES/EAGL.h>
 #import <GLKit/GLKit.h>
 
+#include <sys/types.h>
+#include <sys/sysctl.h>
+
 #define LOG_VISION 1
 #ifndef DLog
 #if !defined(NDEBUG) && LOG_VISION
@@ -207,9 +210,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @synthesize videoBitRate = _videoBitRate;
 @synthesize additionalCompressionProperties = _additionalCompressionProperties;
 @synthesize maximumCaptureDuration = _maximumCaptureDuration;
-
-#include <sys/types.h>
-#include <sys/sysctl.h>
 
 + (NSString*)hardwareString
 {
