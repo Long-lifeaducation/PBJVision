@@ -212,6 +212,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 @property (nonatomic, readonly) Float64 capturedAudioSeconds;
 @property (nonatomic, readonly) Float64 capturedVideoSeconds;
 
+@property (nonatomic, assign) CMTime audioStartTimestamp;
+
 - (void)setupVideoCapture;
 - (void)startVideoCapture;
 - (void)pauseVideoCapture;
@@ -280,7 +282,9 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 - (void)visionDidStartVideoCapture:(PBJVision *)vision;
 - (void)visionDidPauseVideoCapture:(PBJVision *)vision; // stopped but not ended
 - (void)visionDidResumeVideoCapture:(PBJVision *)vision;
+- (void)visionDidStartWritingVideo:(PBJVision *)vision;
 - (void)vision:(PBJVision *)vision capturedVideo:(NSDictionary *)videoDict error:(NSError *)error;
+
 
 // video capture progress
 

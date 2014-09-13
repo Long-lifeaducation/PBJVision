@@ -169,6 +169,10 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     NSMutableArray *_previousSecondTimestamps;
 	Float64 _frameRate;
     
+    CMTime _lastAudioTimestamp;
+    
+    CMTime _audioRecordOffset;
+    
     // flags
     
     struct {
@@ -674,6 +678,25 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     return NO;
 }
 
+- (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp
+{
+//    _audioStartTimestamp = audioStartTimestamp;
+//    
+//    static mach_timebase_info_data_t s_timebase_info;
+//    
+//    if (s_timebase_info.denom == 0) {
+//        (void) mach_timebase_info(&s_timebase_info);
+//    }
+//    
+//    long long diff = (long long)mach_absolute_time() - audioStartTimestamp;
+//    _audioRecordOffset = CMTimeMake(diff * s_timebase_info.numer / 1000, 1000000 * s_timebase_info.denom);
+    
+    _audioRecordOffset = CMTimeSubtract(_startTimestamp, audioStartTimestamp);
+    _lastTimestamp = audioStartTimestamp;//CMTimeSubtract(_startTimestamp, CMTimeSubtract(CMClockGetTime(CMClockGetHostTimeClock()), audioStartTimestamp));
+    
+    DLog(@"_audioRecordOffset: %f", CMTimeGetSeconds(_audioRecordOffset));
+}
+
 #pragma mark - init
 
 - (id)init
@@ -728,7 +751,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         
         // default flags
         _flags.thumbnailEnabled = YES;
-        _flags.audioCaptureEnabled = YES;
+        _flags.audioCaptureEnabled = NO;
 
         // setup queues
         _captureSessionDispatchQueue = dispatch_queue_create("PBJVisionSession", DISPATCH_QUEUE_SERIAL); // protects session
@@ -851,6 +874,7 @@ typedef void (^PBJVisionBlock)();
     // create session
     _captureSession = [[AVCaptureSession alloc] init];
 
+    _captureSession.usesApplicationAudioSession = YES;
     _captureSession.automaticallyConfiguresApplicationAudioSession = NO;
 
     // capture devices
@@ -1781,6 +1805,8 @@ typedef void (^PBJVisionBlock)();
         _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
         //_lastTimestamp = kCMTimeInvalid;
         _lastTimestamp = _startTimestamp;
+        _lastAudioTimestamp = kCMTimeInvalid;
+        _audioRecordOffset = kCMTimeInvalid;
         
         _flags.recording = YES;
         _flags.paused = NO;
@@ -2079,11 +2105,12 @@ typedef void (^PBJVisionBlock)();
         if (!bufferToWrite) {
             DLog(@"error subtracting the timeoffset from the sampleBuffer");
         }
+        //DLog(@"subtracted lasttimestamp (%lld / %d)", _lastTimestamp.value, _lastTimestamp.timescale);
     } else {
         bufferToWrite = sampleBuffer;
         CFRetain(bufferToWrite);
     }
-
+    
     if (isVideo && !_flags.interrupted) {
         
         if (bufferToWrite) {
@@ -2093,7 +2120,22 @@ typedef void (^PBJVisionBlock)();
             // this seems necessary to make sure we have the pixel buffer pool alloc'd when we need it...
             if (_flags.recording && !_flags.videoWritten) {
                 [_mediaWriter startWritingAtTime:time];
+                
+                // this will grab the info need to compute _audioRecordOffset
+                if ([_delegate respondsToSelector:@selector(visionDidStartWritingVideo:)]) {
+                    [_delegate visionDidStartWritingVideo:self];
+                }
             }
+            
+//            if (CMTIME_IS_VALID(_audioRecordOffset)) {
+//                CMSampleBufferRef bufferToWriteTimedWithAudio = [PBJVisionUtilities createOffsetSampleBufferWithSampleBuffer:sampleBuffer usingTimeOffset:_audioRecordOffset];
+//                if (!bufferToWriteTimedWithAudio) {
+//                    DLog(@"error subtracting the audio timeoffset from the sampleBuffer");
+//                }
+//                DLog(@"subtracted _audioRecordOffset (%lld / %d)", _audioRecordOffset.value, _audioRecordOffset.timescale);
+//                CFRelease(bufferToWrite);
+//                bufferToWrite = bufferToWriteTimedWithAudio;
+//            }
             
             // process the sample buffer for rendering
             CVPixelBufferRef filteredPixelBuffer = NULL;
@@ -2107,9 +2149,10 @@ typedef void (^PBJVisionBlock)();
                 if (duration.value > 0)
                     time = CMTimeAdd(time, duration);
                 
-                if (_flags.recording && (!_flags.videoWritten || time.value > _mediaWriter.videoTimestamp.value)) {
+                if (_flags.recording && CMTIME_IS_VALID(_audioRecordOffset) && (!_flags.videoWritten || time.value > _mediaWriter.videoTimestamp.value)) {
                     [_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeVideo withPixelBuffer:filteredPixelBuffer];
                     _flags.videoWritten = YES;
+                    //DLog(@"wrote buffer at %lld %d", _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);
                 }
                 else {
                     DLog(@"buffer too early!  %lld %d / %lld %d", time.value, time.timescale, _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);
@@ -2138,11 +2181,19 @@ typedef void (^PBJVisionBlock)();
                 //[_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeAudio];
             }
             
+            //printf("%f (v: %f)\n", CMTimeGetSeconds(time), CMTimeGetSeconds(_mediaWriter.videoTimestamp));
+            
+            if (CMTIME_IS_VALID(_lastAudioTimestamp) && CMTIME_COMPARE_INLINE(CMTimeSubtract(time, _lastAudioTimestamp), >, CMTimeMake(1, 2))) {
+                NSLog(@"jump: %f %f %f\n", CMTimeGetSeconds(_lastAudioTimestamp), CMTimeGetSeconds(time), CMTimeGetSeconds(_mediaWriter.videoTimestamp));
+            }
+            
             //[self _enqueueBlockOnMainQueue:^{
                 if ([_delegate respondsToSelector:@selector(vision:didCaptureAudioSample:)]) {
                     [_delegate vision:self didCaptureAudioSample:bufferToWrite];
                 }
             //}];
+            
+            _lastAudioTimestamp = time;
         }
     }
     

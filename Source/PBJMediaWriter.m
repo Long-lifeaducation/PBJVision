@@ -240,6 +240,7 @@
 
 - (BOOL)startWritingAtTime:(CMTime)startTime
 {
+    DLog(@"about to start writing...");
     BOOL didStart = NO;
     if ( _assetWriter.status == AVAssetWriterStatusUnknown ) {
         didStart = [_assetWriter startWriting];
