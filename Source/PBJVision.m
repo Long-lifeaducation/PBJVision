@@ -1854,8 +1854,10 @@ typedef void (^PBJVisionBlock)();
  
         DLog(@"resuming video capture");
        
+        _audioRecordOffset = kCMTimeInvalid;
         _flags.paused = NO;
         _flags.interrupted = NO;
+        
 
         [self _enqueueBlockOnMainQueue:^{
             if ([_delegate respondsToSelector:@selector(visionDidResumeVideoCapture:)])
@@ -2067,11 +2069,18 @@ typedef void (^PBJVisionBlock)();
 
     CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     
-//    // need to start writing so we have the pixel buffer pool alloc'd and ready...
-//    if (!_flags.videoWritten) {
-//        [_mediaWriter startWritingAtTime:currentTimestamp];
-//        // TODO what if it doesn't start??
-//    }
+    // need to start writing so we have the pixel buffer pool alloc'd and ready...
+    if (_flags.recording && !_flags.videoWritten) {
+        [_mediaWriter startWritingAtTime:kCMTimeZero];
+        // TODO what if it doesn't start??
+    }
+    
+    if (_flags.recording && CMTIME_IS_INVALID(_audioRecordOffset)) {
+        // this will grab the info need to compute _audioRecordOffset
+        if ([_delegate respondsToSelector:@selector(visionWillStartWritingVideo:)]) {
+            [_delegate visionWillStartWritingVideo:self];
+        }
+    }
     
 //    [self calculateFramerateAtTimestamp:currentTimestamp];
 //    NSLog(@"fps: %f", _frameRate);
@@ -2097,15 +2106,25 @@ typedef void (^PBJVisionBlock)();
 //    }
     
     CMSampleBufferRef bufferToWrite = NULL;
+    
+    //DLog(@"currentTimestamp (%lld / %d)", currentTimestamp.value, currentTimestamp.timescale);
 
-    if (_lastTimestamp.value > 0) {
-        DLog(@"currentTimestamp (%lld / %d)", currentTimestamp.value, currentTimestamp.timescale);
+    if (CMTIME_IS_VALID(_lastTimestamp)) {
+        //DLog(@"currentTimestamp (%lld / %d)", currentTimestamp.value, currentTimestamp.timescale);
         bufferToWrite = [PBJVisionUtilities createOffsetSampleBufferWithSampleBuffer:sampleBuffer usingTimeOffset:_lastTimestamp];
         if (!bufferToWrite) {
             DLog(@"error subtracting the timeoffset from the sampleBuffer");
         }
-        //DLog(@"subtracted lasttimestamp (%lld / %d)", _lastTimestamp.value, _lastTimestamp.timescale);
-    } else {
+        //DLog(@"subtracted lastTimestamp (%lld / %d)", _lastTimestamp.value, _lastTimestamp.timescale);
+    }
+    else if (CMTIME_IS_VALID(_startTimestamp)){
+        bufferToWrite = [PBJVisionUtilities createOffsetSampleBufferWithSampleBuffer:sampleBuffer usingTimeOffset:_startTimestamp];
+        if (!bufferToWrite) {
+            DLog(@"error subtracting the timeoffset from the sampleBuffer");
+        }
+        //DLog(@"subtracted startTimestamp (%lld / %d)", _startTimestamp.value, _startTimestamp.timescale);
+    }
+    else {
         bufferToWrite = sampleBuffer;
         CFRetain(bufferToWrite);
     }
@@ -2115,18 +2134,6 @@ typedef void (^PBJVisionBlock)();
         if (bufferToWrite) {
             
             CMTime time = CMSampleBufferGetPresentationTimeStamp(bufferToWrite);
-            
-            if (_flags.recording && !_flags.videoWritten) {
-                if (CMTIME_IS_VALID(_audioRecordOffset)) {
-                    [_mediaWriter startWritingAtTime:time];
-                }
-                else {
-                    // this will grab the info need to compute _audioRecordOffset
-                    if ([_delegate respondsToSelector:@selector(visionWillStartWritingVideo:)]) {
-                        [_delegate visionWillStartWritingVideo:self];
-                    }
-                }
-            }
             
 //            if (CMTIME_IS_VALID(_audioRecordOffset)) {
 //                CMSampleBufferRef bufferToWriteTimedWithAudio = [PBJVisionUtilities createOffsetSampleBufferWithSampleBuffer:sampleBuffer usingTimeOffset:_audioRecordOffset];
@@ -2146,14 +2153,13 @@ typedef void (^PBJVisionBlock)();
             
             if (filteredPixelBuffer) {
                 // update video and the last timestamp
-                CMTime duration = CMSampleBufferGetDuration(bufferToWrite);
-                if (_flags.recording && !_flags.paused && !_flags.interrupted && CMTIME_IS_VALID(_audioRecordOffset) && (!_flags.videoWritten || CMTIME_COMPARE_INLINE(CMTimeAdd(time, duration), >, _mediaWriter.videoTimestamp))) {
+                if (_flags.recording && !_flags.paused && !_flags.interrupted && (!_flags.videoWritten || CMTIME_COMPARE_INLINE(time, >=, _mediaWriter.videoTimestamp))) {
                     [_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeVideo withPixelBuffer:filteredPixelBuffer];
                     _flags.videoWritten = YES;
-                    DLog(@"wrote buffer at %lld %d", _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);
+                    //DLog(@"wrote buffer at %lld %d", _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);
                 }
                 else {
-                    DLog(@"buffer not written!  %lld %d / %lld %d (%d %d)", time.value, time.timescale, _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale, _flags.recording, CMTIME_IS_VALID(_audioRecordOffset));
+                    //DLog(@"buffer not written!  %lld %d / %lld %d (%d)", time.value, time.timescale, _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale, _flags.recording);
                 }
                 
                 CVPixelBufferRelease(filteredPixelBuffer);

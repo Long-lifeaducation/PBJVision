@@ -275,18 +275,24 @@
 	if ( _assetWriter.status == AVAssetWriterStatusWriting ) {
 		
         CMTime timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+        CMTime duration = CMSampleBufferGetDuration(sampleBuffer);
 		if (mediaType == AVMediaTypeVideo) {
 			if (_assetWriterVideoIn.readyForMoreMediaData) {
                 if (filteredPixelBuffer) {
                     if ([_assetWriterInputPixelBufferAdaptor appendPixelBuffer:filteredPixelBuffer withPresentationTime:timestamp]) {
-                        _videoTimestamp = timestamp;
+                        if (CMTIME_IS_VALID(duration)) {
+                            _videoTimestamp = CMTimeAdd(timestamp, duration);
+                        }
+                        else {
+                            _videoTimestamp = timestamp;
+                        }
                         //DLog(@"videoTimestamp: %lld %d", _videoTimestamp.value, _videoTimestamp.timescale);
                     } else {
                         DLog(@"writer error appending video (%@)", [_assetWriter error]);
                     }
                 } else {
                     if ([_assetWriterVideoIn appendSampleBuffer:sampleBuffer]) {
-                        _videoTimestamp = timestamp;
+                        _videoTimestamp = CMTimeAdd(timestamp, duration);
                         //DLog(@"videoTimestamp: %lld %d", _videoTimestamp.value, _videoTimestamp.timescale);
                     } else {
                         DLog(@"writer error appending video (%@)", [_assetWriter error]);
