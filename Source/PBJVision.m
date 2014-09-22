@@ -163,9 +163,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     CIContext *_ciContext;
     CIContext *_ciContextPreview;
     
-    CGRect _filteredPreviewViewBounds;
-    CGRect _filteredSmallPreviewViewBounds;
-    
     NSMutableArray *_previousSecondTimestamps;
 	Float64 _frameRate;
     
@@ -768,20 +765,17 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         // we want to obtain this piece of information so that we won't be
         // accessing _videoPreviewView's properties from another thread/queue
         [_filteredPreviewView bindDrawable];
-        _filteredPreviewViewBounds = CGRectZero;
-        _filteredPreviewViewBounds.size.width = 640;//_filteredPreviewView.drawableWidth;
-        _filteredPreviewViewBounds.size.height = 640;//_filteredPreviewView.drawableHeight;
-        _filteredPreviewView.frame = _filteredPreviewViewBounds;
+        _filteredPreviewView.frame = CGRectMake(0, 0, 640, 640);
         
         [_filteredSmallPreviewView bindDrawable];
         _filteredSmallPreviewView = [[GLKView alloc] initWithFrame:CGRectZero context:_contextPreview];
         _filteredSmallPreviewView.enableSetNeedsDisplay = NO;
         [_filteredSmallPreviewView bindDrawable];
-        _filteredSmallPreviewViewBounds = _filteredPreviewViewBounds;
+        CGRect smallPreviewBounds = _filteredPreviewView.bounds;
         static const float scale = 0.2;
-        _filteredSmallPreviewViewBounds.size.width = _filteredPreviewViewBounds.size.width * scale;
-        _filteredSmallPreviewViewBounds.size.height = _filteredPreviewViewBounds.size.height * scale;
-        _filteredSmallPreviewView.frame = _filteredSmallPreviewViewBounds;
+        smallPreviewBounds.size.width = smallPreviewBounds.size.width * scale;
+        smallPreviewBounds.size.height = smallPreviewBounds.size.height * scale;
+        _filteredSmallPreviewView.frame = smallPreviewBounds;
         
 //        // because the native video image from the back camera is in UIDeviceOrientationLandscapeLeft (i.e. the home button is on the right), we need to apply a clockwise 90 degree transform so that we can draw the video preview as if we were in a landscape-oriented view; if you're using the front camera and you want to have a mirrored preview (so that the user is seeing themselves in the mirror), you need to apply an additional horizontal flip (by concatenating CGAffineTransformMakeScale(-1.0, 1.0) to the rotation transform)
 //        CGAffineTransform transform = CGAffineTransformMakeRotation(M_PI_2);
@@ -2560,7 +2554,7 @@ typedef void (^PBJVisionBlock)();
     
     CGRect sourceExtent = image.extent;
     CGFloat sourceAspect = sourceExtent.size.width / sourceExtent.size.height;
-    CGFloat previewAspect = _filteredPreviewViewBounds.size.width  / _filteredPreviewViewBounds.size.height;
+    CGFloat previewAspect = _filteredPreviewView.bounds.size.width  / _filteredPreviewView.bounds.size.height;
     
     // we want to maintain the aspect radio of the screen size, so we clip the video image
     CGRect drawRect = sourceExtent;
@@ -2605,8 +2599,11 @@ typedef void (^PBJVisionBlock)();
 //    glEnable(GL_BLEND);
 //    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     
-    [_ciContext drawImage:image inRect:_filteredPreviewViewBounds fromRect:drawRect];
-    
+    // draw the preview view (taking screen scale into consideration)
+    CGRect previewBounds = _filteredPreviewView.bounds;
+    previewBounds.size.width *= [UIScreen mainScreen].scale;
+    previewBounds.size.height *= [UIScreen mainScreen].scale;
+    [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
     [_filteredPreviewView display];
     
     ////////////////////////
@@ -2623,7 +2620,10 @@ typedef void (^PBJVisionBlock)();
 //    glEnable(GL_BLEND);
 //    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     
-    [_ciContextPreview drawImage:image inRect:_filteredSmallPreviewViewBounds fromRect:drawRect];
+    CGRect smallPreviewBounds = _filteredSmallPreviewView.bounds;
+    smallPreviewBounds.size.width *= [UIScreen mainScreen].scale;
+    smallPreviewBounds.size.height *= [UIScreen mainScreen].scale;
+    [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
     [_filteredSmallPreviewView display];
     
     ////////////////////////
