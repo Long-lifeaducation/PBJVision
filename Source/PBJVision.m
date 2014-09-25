@@ -2164,6 +2164,17 @@ typedef void (^PBJVisionBlock)();
                 
                 CVPixelBufferRelease(filteredPixelBuffer);
             }
+            else {
+                // update video and the last timestamp
+                if (_flags.recording && !_flags.paused && !_flags.interrupted && (!_flags.videoWritten || CMTIME_COMPARE_INLINE(time, >=, _mediaWriter.videoTimestamp))) {
+                    [_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeVideo];
+                    _flags.videoWritten = YES;
+                    //DLog(@"wrote buffer at %lld %d", _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);
+                }
+                else {
+                    //DLog(@"buffer not written!  %lld %d / %lld %d (%d)", time.value, time.timescale, _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale, _flags.recording);
+                }
+            }
             
             [self _enqueueBlockOnMainQueue:^{
                 if ([_delegate respondsToSelector:@selector(vision:didCaptureVideoSampleBuffer:)]) {
@@ -2554,168 +2565,252 @@ typedef void (^PBJVisionBlock)();
     
     [EAGLContext setCurrentContext:_context];
     
-    // null colorspace to avoid colormatching
-    NSDictionary *options = @{ (id)kCIImageColorSpace : (id)kCFNull };
-    CIImage *image = [CIImage imageWithCVPixelBuffer:imageBuffer options:options];
+//    // null colorspace to avoid colormatching
+//    NSDictionary *options = @{ (id)kCIImageColorSpace : (id)kCFNull };
+//    CIImage *image = [CIImage imageWithCVPixelBuffer:imageBuffer options:options];
+//    
+//    CGRect sourceExtent = image.extent;
+//    CGFloat sourceAspect = sourceExtent.size.width / sourceExtent.size.height;
+//    CGFloat previewAspect = _filteredPreviewViewBounds.size.width  / _filteredPreviewViewBounds.size.height;
+//    
+//    // we want to maintain the aspect radio of the screen size, so we clip the video image
+//    CGRect drawRect = sourceExtent;
+//    if (sourceAspect > previewAspect)
+//    {
+//        // use full height of the video image, and center crop the width
+//        drawRect.origin.x += (drawRect.size.width - drawRect.size.height * previewAspect) / 2.0;
+//        drawRect.size.width = drawRect.size.height * previewAspect;
+//    }
+//    else
+//    {
+//        // use full width of the video image, and center crop the height
+//        drawRect.origin.y += (drawRect.size.height - drawRect.size.width / previewAspect) / 2.0;
+//        drawRect.size.height = drawRect.size.width / previewAspect;
+//    }
+//    
+////    image = [image imageByApplyingTransform:CGAffineTransformMakeRotation(-M_PI/2.0)];
+////    CGPoint origin = [image extent].origin;
+////    image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(-origin.x, -origin.y)];
+//    
+//    // manual mirroring!
+//    if (_cameraDevice == PBJCameraDeviceFront)
+//    {
+//        CGSize size = [image extent].size;
+//        image = [image imageByApplyingTransform:CGAffineTransformMakeScale(-1.0, 1.0)];
+//        image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
+//    }
+//    
+//    if (_filter && _filteringEnabled)
+//    {
+//        [_filter setValue:image forKey:kCIInputImageKey];
+//        image = _filter.outputImage;
+//    }
+//    
+//    [_filteredPreviewView bindDrawable];
+//    
+////    // clear eagl view to grey
+////    glClearColor(1.0, 0.0, 0.0, 1.0);
+////    glClear(GL_COLOR_BUFFER_BIT);
+////    
+////    // set the blend mode to "source over" so that CI will use that
+////    glEnable(GL_BLEND);
+////    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+//    
+//    [_ciContext drawImage:image inRect:_filteredPreviewViewBounds fromRect:drawRect];
+//    
+//    [_filteredPreviewView display];
+//    
+//    ////////////////////////
+//    
+//    [EAGLContext setCurrentContext:_contextPreview];
+//
+//    [_filteredSmallPreviewView bindDrawable];
+//    
+////    // clear eagl view to grey
+////    glClearColor(1.0, 0.0, 0.0, 1.0);
+////    glClear(GL_COLOR_BUFFER_BIT);
+////    
+////    // set the blend mode to "source over" so that CI will use that
+////    glEnable(GL_BLEND);
+////    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+//    
+//    [_ciContextPreview drawImage:image inRect:_filteredSmallPreviewViewBounds fromRect:drawRect];
+//    [_filteredSmallPreviewView display];
+//    
+//    ////////////////////////
+//    
+//    CIImage* cropImage = [image imageByCroppingToRect:drawRect];
+//    cropImage = [cropImage imageByApplyingTransform:CGAffineTransformMakeTranslation(0, -drawRect.origin.y)];
+//    CVPixelBufferRef renderedOutputPixelBuffer = NULL;
+//    if (_mediaWriter.videoReady) {
+//        CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
+//        if (!err && renderedOutputPixelBuffer)
+//        {
+//            // render the filtered image back to the pixel buffer (no locking needed as CIContext's render method will do that
+//            //[_ciContext render:image toCVPixelBuffer:renderedOutputPixelBuffer bounds:[image extent] colorSpace:sDeviceRgbColorSpace];
+//            [_ciContext render:cropImage toCVPixelBuffer:renderedOutputPixelBuffer];
+//        }
+//        CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
+//    }
+//    
+//    return renderedOutputPixelBuffer;
     
-    CGRect sourceExtent = image.extent;
-    CGFloat sourceAspect = sourceExtent.size.width / sourceExtent.size.height;
-    CGFloat previewAspect = _filteredPreviewViewBounds.size.width  / _filteredPreviewViewBounds.size.height;
+    [self _cleanUpTextures];
+
+    size_t width = CVPixelBufferGetWidth(imageBuffer);
+    size_t height = CVPixelBufferGetHeight(imageBuffer);
+
+    // only bind the vertices once or if parameters change
     
-    // we want to maintain the aspect radio of the screen size, so we clip the video image
-    CGRect drawRect = sourceExtent;
-    if (sourceAspect > previewAspect)
-    {
-        // use full height of the video image, and center crop the width
-        drawRect.origin.x += (drawRect.size.width - drawRect.size.height * previewAspect) / 2.0;
-        drawRect.size.width = drawRect.size.height * previewAspect;
+    if (_bufferWidth != width ||
+        _bufferHeight != height ||
+        _bufferDevice != _cameraDevice ||
+        _bufferOrientation != _cameraOrientation) {
+        
+        _bufferWidth = width;
+        _bufferHeight = height;
+        _bufferDevice = _cameraDevice;
+        _bufferOrientation = _cameraOrientation;
+        [self _setupBuffers];
+        
     }
-    else
-    {
-        // use full width of the video image, and center crop the height
-        drawRect.origin.y += (drawRect.size.height - drawRect.size.width / previewAspect) / 2.0;
-        drawRect.size.height = drawRect.size.width / previewAspect;
+    
+    // always upload the texturs since the input may be changing
+    
+    CVReturn error = 0;
+    
+    // Y-plane
+    glActiveTexture(GL_TEXTURE0);
+    error = CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
+                                                        _videoTextureCache,
+                                                        imageBuffer,
+                                                        NULL,
+                                                        GL_TEXTURE_2D,
+                                                        GL_RED_EXT,
+                                                        (GLsizei)_bufferWidth,
+                                                        (GLsizei)_bufferHeight,
+                                                        GL_RED_EXT,
+                                                        GL_UNSIGNED_BYTE,
+                                                        0,
+                                                        &_lumaTexture);
+    if (error) {
+        DLog(@"error CVOpenGLESTextureCacheCreateTextureFromImage (%d)", error);
     }
     
-//    image = [image imageByApplyingTransform:CGAffineTransformMakeRotation(-M_PI/2.0)];
-//    CGPoint origin = [image extent].origin;
-//    image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(-origin.x, -origin.y)];
+    glBindTexture(CVOpenGLESTextureGetTarget(_lumaTexture), CVOpenGLESTextureGetName(_lumaTexture));
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); 
     
-    // manual mirroring!
-    if (_cameraDevice == PBJCameraDeviceFront)
-    {
-        CGSize size = [image extent].size;
-        image = [image imageByApplyingTransform:CGAffineTransformMakeScale(-1.0, 1.0)];
-        image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
+    // UV-plane
+    glActiveTexture(GL_TEXTURE1);
+    error = CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
+                                                         _videoTextureCache,
+                                                         imageBuffer,
+                                                         NULL,
+                                                         GL_TEXTURE_2D,
+                                                         GL_RG_EXT,
+                                                         (GLsizei)(_bufferWidth * 0.5),
+                                                         (GLsizei)(_bufferHeight * 0.5),
+                                                         GL_RG_EXT,
+                                                         GL_UNSIGNED_BYTE,
+                                                         1,
+                                                         &_chromaTexture);
+    if (error) {
+        DLog(@"error CVOpenGLESTextureCacheCreateTextureFromImage (%d)", error);
     }
     
-    if (_filter && _filteringEnabled)
-    {
-        [_filter setValue:image forKey:kCIInputImageKey];
-        image = _filter.outputImage;
-    }
+    glBindTexture(CVOpenGLESTextureGetTarget(_chromaTexture), CVOpenGLESTextureGetName(_chromaTexture));
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, CVOpenGLESTextureGetName(_chromaTexture), 0);
+    
+    if (CVPixelBufferUnlockBaseAddress(imageBuffer, 0) != kCVReturnSuccess)
+        return NULL;
+    
+    //// draw into the live view
     
     [_filteredPreviewView bindDrawable];
     
-//    // clear eagl view to grey
-//    glClearColor(1.0, 0.0, 0.0, 1.0);
-//    glClear(GL_COLOR_BUFFER_BIT);
-//    
-//    // set the blend mode to "source over" so that CI will use that
-//    glEnable(GL_BLEND);
-//    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	
+    CGRect presentationRect = _filteredPreviewView.layer.bounds;
+    CGSize sourceExtent = CGSizeMake(width, height);
+	
+    // note mirroring happens here it
+    GLfloat quadVertexData [] = {
+		 1.f , -1.f,
+        -1.f , -1.f,
+		 1.f ,  1.f,
+        -1.f ,  1.f
+	};
+	
+	// Update attribute values.
+    GLuint vertexAttributeLocation = [_program attributeLocation:PBJGLProgramAttributeVertex];
+	glVertexAttribPointer(vertexAttributeLocation, 2, GL_FLOAT, 0, 0, quadVertexData);
+	glEnableVertexAttribArray(vertexAttributeLocation);
     
-    [_ciContext drawImage:image inRect:_filteredPreviewViewBounds fromRect:drawRect];
+	/*
+     The texture vertices are set up such that we flip the texture vertically. This is so that our top left origin buffers match OpenGL's bottom left texture coordinate system.
+     */
+	CGRect textureSamplingRect = [self textureSamplingRectForCroppingTextureWithAspectRatio:sourceExtent toAspectRatio:presentationRect.size];
+	GLfloat quadTextureData[] =  {
+		CGRectGetMinX(textureSamplingRect), CGRectGetMaxY(textureSamplingRect),
+		CGRectGetMaxX(textureSamplingRect), CGRectGetMaxY(textureSamplingRect),
+		CGRectGetMinX(textureSamplingRect), CGRectGetMinY(textureSamplingRect),
+		CGRectGetMaxX(textureSamplingRect), CGRectGetMinY(textureSamplingRect)
+	};
+	
+    GLuint textureAttributeLocation = [_program attributeLocation:PBJGLProgramAttributeTextureCoord];
+	glVertexAttribPointer(textureAttributeLocation, 2, GL_FLOAT, 0, 0, quadTextureData);
+	glEnableVertexAttribArray(textureAttributeLocation);
+	
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     
     [_filteredPreviewView display];
     
-    ////////////////////////
+    //////////
     
-    [EAGLContext setCurrentContext:_contextPreview];
-
-    [_filteredSmallPreviewView bindDrawable];
+    // draw to new pixel buffer so we can pass to the AVAssetWriter
     
-//    // clear eagl view to grey
-//    glClearColor(1.0, 0.0, 0.0, 1.0);
-//    glClear(GL_COLOR_BUFFER_BIT);
-//    
-//    // set the blend mode to "source over" so that CI will use that
-//    glEnable(GL_BLEND);
-//    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    
-    [_ciContextPreview drawImage:image inRect:_filteredSmallPreviewViewBounds fromRect:drawRect];
-    [_filteredSmallPreviewView display];
-    
-    ////////////////////////
-    
-    CIImage* cropImage = [image imageByCroppingToRect:drawRect];
-    cropImage = [cropImage imageByApplyingTransform:CGAffineTransformMakeTranslation(0, -drawRect.origin.y)];
     CVPixelBufferRef renderedOutputPixelBuffer = NULL;
-    if (_mediaWriter.videoReady) {
-        CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
-        if (!err && renderedOutputPixelBuffer)
-        {
-            // render the filtered image back to the pixel buffer (no locking needed as CIContext's render method will do that
-            //[_ciContext render:image toCVPixelBuffer:renderedOutputPixelBuffer bounds:[image extent] colorSpace:sDeviceRgbColorSpace];
-            [_ciContext render:cropImage toCVPixelBuffer:renderedOutputPixelBuffer];
-        }
-        CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
-    }
+//    if (_mediaWriter.videoReady) {
+//        CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
+//        if (!err && renderedOutputPixelBuffer)
+//        {
+//            if (CVPixelBufferLockBaseAddress(renderedOutputPixelBuffer, 0) == kCVReturnSuccess)
+//            {
+//                GLubyte *pixelBufferData = (GLubyte *)CVPixelBufferGetBaseAddress(renderedOutputPixelBuffer);
+//                glReadPixels(0, 0, width, width, GL_RGBA, GL_UNSIGNED_BYTE, pixelBufferData);
+//                CVPixelBufferUnlockBaseAddress(renderedOutputPixelBuffer, 0);
+//            }
+//        }
+//    }
     
     return renderedOutputPixelBuffer;
-    
-//    [self _cleanUpTextures];
-//
-//    size_t width = CVPixelBufferGetWidth(imageBuffer);
-//    size_t height = CVPixelBufferGetHeight(imageBuffer);
-//
-//    // only bind the vertices once or if parameters change
-//    
-//    if (_bufferWidth != width ||
-//        _bufferHeight != height ||
-//        _bufferDevice != _cameraDevice ||
-//        _bufferOrientation != _cameraOrientation) {
-//        
-//        _bufferWidth = width;
-//        _bufferHeight = height;
-//        _bufferDevice = _cameraDevice;
-//        _bufferOrientation = _cameraOrientation;
-//        [self _setupBuffers];
-//        
-//    }
-//    
-//    // always upload the texturs since the input may be changing
-//    
-//    CVReturn error = 0;
-//    
-//    // Y-plane
-//    glActiveTexture(GL_TEXTURE0);
-//    error = CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
-//                                                        _videoTextureCache,
-//                                                        imageBuffer,
-//                                                        NULL,
-//                                                        GL_TEXTURE_2D,
-//                                                        GL_RED_EXT,
-//                                                        (GLsizei)_bufferWidth,
-//                                                        (GLsizei)_bufferHeight,
-//                                                        GL_RED_EXT,
-//                                                        GL_UNSIGNED_BYTE,
-//                                                        0,
-//                                                        &_lumaTexture);
-//    if (error) {
-//        DLog(@"error CVOpenGLESTextureCacheCreateTextureFromImage (%d)", error);
-//    }
-//    
-//    glBindTexture(CVOpenGLESTextureGetTarget(_lumaTexture), CVOpenGLESTextureGetName(_lumaTexture));
-//	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-//	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); 
-//    
-//    // UV-plane
-//    glActiveTexture(GL_TEXTURE1);
-//    error = CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
-//                                                         _videoTextureCache,
-//                                                         imageBuffer,
-//                                                         NULL,
-//                                                         GL_TEXTURE_2D,
-//                                                         GL_RG_EXT,
-//                                                         (GLsizei)(_bufferWidth * 0.5),
-//                                                         (GLsizei)(_bufferHeight * 0.5),
-//                                                         GL_RG_EXT,
-//                                                         GL_UNSIGNED_BYTE,
-//                                                         1,
-//                                                         &_chromaTexture);
-//    if (error) {
-//        DLog(@"error CVOpenGLESTextureCacheCreateTextureFromImage (%d)", error);
-//    }
-//    
-//    glBindTexture(CVOpenGLESTextureGetTarget(_chromaTexture), CVOpenGLESTextureGetName(_chromaTexture));
-//	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-//	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-//    
-//    if (CVPixelBufferUnlockBaseAddress(imageBuffer, 0) != kCVReturnSuccess)
-//        return;
-//
-//    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+}
+
+- (CGRect)textureSamplingRectForCroppingTextureWithAspectRatio:(CGSize)textureAspectRatio toAspectRatio:(CGSize)croppingAspectRatio
+{
+	CGRect normalizedSamplingRect = CGRectZero;
+	CGSize cropScaleAmount = CGSizeMake(croppingAspectRatio.width / textureAspectRatio.width, croppingAspectRatio.height / textureAspectRatio.height);
+	CGFloat maxScale = fmax(cropScaleAmount.width, cropScaleAmount.height);
+	CGSize scaledTextureSize = CGSizeMake(textureAspectRatio.width * maxScale, textureAspectRatio.height * maxScale);
+	
+	if ( cropScaleAmount.height > cropScaleAmount.width ) {
+		normalizedSamplingRect.size.width = croppingAspectRatio.width / scaledTextureSize.width;
+		normalizedSamplingRect.size.height = 1.0;
+	}
+	else {
+		normalizedSamplingRect.size.height = croppingAspectRatio.height / scaledTextureSize.height;
+		normalizedSamplingRect.size.width = 1.0;
+	}
+	// Center crop
+	normalizedSamplingRect.origin.x = (1.0 - normalizedSamplingRect.size.width)/2.0;
+	normalizedSamplingRect.origin.y = (1.0 - normalizedSamplingRect.size.height)/2.0;
+	
+	return normalizedSamplingRect;
 }
 
 - (void)_cleanUpTextures
@@ -2746,6 +2841,8 @@ typedef void (^PBJVisionBlock)();
 //        -1.0f,  1.0f,
 //        1.0f,  1.0f,
 //    };
+    
+    _presentationFrame = _filteredPreviewView.bounds;
     
     CGSize inputSize = CGSizeMake(_bufferWidth, _bufferHeight);
     CGRect insetRect = AVMakeRectWithAspectRatioInsideRect(inputSize, _presentationFrame);

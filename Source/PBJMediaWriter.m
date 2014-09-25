@@ -292,7 +292,12 @@
                     }
                 } else {
                     if ([_assetWriterVideoIn appendSampleBuffer:sampleBuffer]) {
-                        _videoTimestamp = CMTimeAdd(timestamp, duration);
+                        if (CMTIME_IS_VALID(duration)) {
+                            _videoTimestamp = CMTimeAdd(timestamp, duration);
+                        }
+                        else {
+                            _videoTimestamp = timestamp;
+                        }
                         //DLog(@"videoTimestamp: %lld %d", _videoTimestamp.value, _videoTimestamp.timescale);
                     } else {
                         DLog(@"writer error appending video (%@)", [_assetWriter error]);
