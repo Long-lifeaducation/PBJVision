@@ -755,36 +755,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         _previewLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSession:nil];
         _previewLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
         
-        _filteredPreviewView = [[GLKView alloc] initWithFrame:CGRectZero context:_context];
-        _filteredPreviewView.enableSetNeedsDisplay = NO;
-        
-        // bind the frame buffer to get the frame buffer width and height;
-        // the bounds used by CIContext when drawing to a GLKView are in pixels (not points),
-        // hence the need to read from the frame buffer's width and height;
-        // in addition, since we will be accessing the bounds in another queue (_captureSessionQueue),
-        // we want to obtain this piece of information so that we won't be
-        // accessing _videoPreviewView's properties from another thread/queue
-        [_filteredPreviewView bindDrawable];
-        _filteredPreviewView.frame = CGRectMake(0, 0, 640, 640);
-        
-        [_filteredSmallPreviewView bindDrawable];
-        _filteredSmallPreviewView = [[GLKView alloc] initWithFrame:CGRectZero context:_contextPreview];
-        _filteredSmallPreviewView.enableSetNeedsDisplay = NO;
-        [_filteredSmallPreviewView bindDrawable];
-        CGRect smallPreviewBounds = _filteredPreviewView.bounds;
-        static const float scale = 0.2;
-        smallPreviewBounds.size.width = smallPreviewBounds.size.width * scale;
-        smallPreviewBounds.size.height = smallPreviewBounds.size.height * scale;
-        _filteredSmallPreviewView.frame = smallPreviewBounds;
-        
-//        // because the native video image from the back camera is in UIDeviceOrientationLandscapeLeft (i.e. the home button is on the right), we need to apply a clockwise 90 degree transform so that we can draw the video preview as if we were in a landscape-oriented view; if you're using the front camera and you want to have a mirrored preview (so that the user is seeing themselves in the mirror), you need to apply an additional horizontal flip (by concatenating CGAffineTransformMakeScale(-1.0, 1.0) to the rotation transform)
-//        CGAffineTransform transform = CGAffineTransformMakeRotation(M_PI_2);
-        // apply the horizontal flip
-//        CGAffineTransform transform = CGAffineTransformIdentity;
-//        BOOL shouldMirror = YES;
-//        if (shouldMirror)
-//            transform = CGAffineTransformConcat(transform, CGAffineTransformMakeScale(-1.0, 1.0));
-//        _filteredPreviewView.transform = transform;
+        [self setupPreviewViews];
         
         _maximumCaptureDuration = kCMTimeInvalid;
         
@@ -812,6 +783,40 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     
     [self _destroyGL];
     [self _destroyCamera];
+}
+
+- (void)setupPreviewViews
+{
+    _filteredPreviewView = [[GLKView alloc] initWithFrame:CGRectZero context:_context];
+    _filteredPreviewView.enableSetNeedsDisplay = NO;
+    
+    // bind the frame buffer to get the frame buffer width and height;
+    // the bounds used by CIContext when drawing to a GLKView are in pixels (not points),
+    // hence the need to read from the frame buffer's width and height;
+    // in addition, since we will be accessing the bounds in another queue (_captureSessionQueue),
+    // we want to obtain this piece of information so that we won't be
+    // accessing _videoPreviewView's properties from another thread/queue
+    [_filteredPreviewView bindDrawable];
+    _filteredPreviewView.frame = CGRectMake(0, 0, 640, 640);
+    
+    [_filteredSmallPreviewView bindDrawable];
+    _filteredSmallPreviewView = [[GLKView alloc] initWithFrame:CGRectZero context:_contextPreview];
+    _filteredSmallPreviewView.enableSetNeedsDisplay = NO;
+    [_filteredSmallPreviewView bindDrawable];
+    CGRect smallPreviewBounds = _filteredPreviewView.bounds;
+    static const float scale = 0.2;
+    smallPreviewBounds.size.width = smallPreviewBounds.size.width * scale;
+    smallPreviewBounds.size.height = smallPreviewBounds.size.height * scale;
+    _filteredSmallPreviewView.frame = smallPreviewBounds;
+    
+//        // because the native video image from the back camera is in UIDeviceOrientationLandscapeLeft (i.e. the home button is on the right), we need to apply a clockwise 90 degree transform so that we can draw the video preview as if we were in a landscape-oriented view; if you're using the front camera and you want to have a mirrored preview (so that the user is seeing themselves in the mirror), you need to apply an additional horizontal flip (by concatenating CGAffineTransformMakeScale(-1.0, 1.0) to the rotation transform)
+//        CGAffineTransform transform = CGAffineTransformMakeRotation(M_PI_2);
+// apply the horizontal flip
+//        CGAffineTransform transform = CGAffineTransformIdentity;
+//        BOOL shouldMirror = YES;
+//        if (shouldMirror)
+//            transform = CGAffineTransformConcat(transform, CGAffineTransformMakeScale(-1.0, 1.0));
+//        _filteredPreviewView.transform = transform;
 }
 
 #pragma mark - queue helper methods
@@ -1259,12 +1264,14 @@ typedef void (^PBJVisionBlock)();
 
 - (void)startPreview
 {
-    [self _enqueueBlockOnCaptureSessionQueue:^{
-        if (!_captureSession) {
-            [self _setupCamera];
-            [self _setupSession];
-        }
+    [self _enqueueBlockOnCaptureVideoQueue:^{
+        [self setupPreviewViews];
+    }];
     
+    [self _enqueueBlockOnCaptureSessionQueue:^{
+        [self _setupCamera];
+        [self _setupSession];
+        
         if (_previewLayer && _previewLayer.session != _captureSession) {
             _previewLayer.session = _captureSession;
             [self _setOrientationForConnection:_previewLayer.connection];
@@ -1914,21 +1921,21 @@ typedef void (^PBJVisionBlock)();
         _flags.recording = NO;
         _flags.paused = NO;
         
+        NSURL *outputURL = _mediaWriter.outputURL;
+        
         void (^finishWritingCompletionHandler)(void) = ^{
             _lastTimestamp = kCMTimeInvalid;
             _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
             _flags.interrupted = NO;
 
-            NSString *path = [_mediaWriter.outputURL path];
+            NSString *path = [outputURL path];
             if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
                 NSError *error = nil;
                 if (![[NSFileManager defaultManager] removeItemAtPath:path error:&error]) {
                     DLog(@"could not setup an output file");
                 }
             }
-
-            _mediaWriter = nil;
-
+            
             [self _enqueueBlockOnMainQueue:^{
                 NSError *error = [NSError errorWithDomain:PBJVisionErrorDomain code:PBJVisionErrorCancelled userInfo:nil];
                 if ([_delegate respondsToSelector:@selector(vision:capturedVideo:error:)]) {
@@ -1937,6 +1944,9 @@ typedef void (^PBJVisionBlock)();
             }];
         };
         [_mediaWriter finishWritingWithCompletionHandler:finishWritingCompletionHandler];
+        
+        // we don't need the reference to this anymore!
+        _mediaWriter = nil;
     }];
 }
 
@@ -2546,8 +2556,6 @@ typedef void (^PBJVisionBlock)();
     if (CVPixelBufferLockBaseAddress(imageBuffer, 0) != kCVReturnSuccess)
         return NULL;
     
-    [EAGLContext setCurrentContext:_context];
-    
     // null colorspace to avoid colormatching
     NSDictionary *options = @{ (id)kCIImageColorSpace : (id)kCFNull };
     CIImage *image = [CIImage imageWithCVPixelBuffer:imageBuffer options:options];
@@ -2588,6 +2596,8 @@ typedef void (^PBJVisionBlock)();
         [_filter setValue:image forKey:kCIInputImageKey];
         image = _filter.outputImage;
     }
+    
+    [EAGLContext setCurrentContext:_context];
     
     [_filteredPreviewView bindDrawable];
     
@@ -2635,6 +2645,8 @@ typedef void (^PBJVisionBlock)();
         CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
         if (!err && renderedOutputPixelBuffer)
         {
+            [EAGLContext setCurrentContext:_context];
+            
             // render the filtered image back to the pixel buffer (no locking needed as CIContext's render method will do that
             //[_ciContext render:image toCVPixelBuffer:renderedOutputPixelBuffer bounds:[image extent] colorSpace:sDeviceRgbColorSpace];
             [_ciContext render:cropImage toCVPixelBuffer:renderedOutputPixelBuffer];
