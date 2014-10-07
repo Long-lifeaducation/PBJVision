@@ -1267,6 +1267,12 @@ typedef void (^PBJVisionBlock)();
     [self _enqueueBlockOnCaptureVideoQueue:^{
         [self setupPreviewViews];
         [self clearPreviewView];
+        
+        [self _enqueueBlockOnMainQueue:^{
+            if ([_delegate respondsToSelector:@selector(visionSessionWillStartPreview:)]) {
+                [_delegate visionSessionWillStartPreview:self];
+            }
+        }];
     }];
     
     [self _enqueueBlockOnCaptureSessionQueue:^{
