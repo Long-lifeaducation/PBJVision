@@ -312,6 +312,11 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     
     if ([_previewLayer.connection isVideoOrientationSupported])
         [self _setOrientationForConnection:_previewLayer.connection];
+    
+    AVCaptureConnection *videoConnection = [_captureOutputVideo connectionWithMediaType:AVMediaTypeVideo];
+    if (videoConnection.isVideoOrientationSupported) {
+        [self _setOrientationForConnection:videoConnection];
+    }
 }
 
 - (void)_setOrientationForConnection:(AVCaptureConnection *)connection
