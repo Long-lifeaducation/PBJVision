@@ -925,6 +925,11 @@ typedef void (^PBJVisionBlock)();
         }
     }
     
+    self.isiPhone6Plus = NO;
+    if ( [currentHardware hasPrefix:@"iPhone7,1"] ) {
+        self.isiPhone6Plus = YES;
+    }
+    
     // add notification observers
     NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
     
@@ -2614,10 +2619,19 @@ typedef void (^PBJVisionBlock)();
 //    glEnable(GL_BLEND);
 //    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     
+    // when drawing the preview we need to scale it by screen scale to handle correct
+    // pixel density. iphone 6+ has a different density than any other device, and it's
+    // not reflected in the UIScreen scale because we aren't fully supporting that
+    // screen size yet (the OS simulates it using a scale of 2 when the actual device pixel ratio is 2.6)
+    CGFloat screenScale = [UIScreen mainScreen].scale;
+    if ( self.isiPhone6Plus ) {
+        screenScale = 2.6;
+    }
+    
     // draw the preview view (taking screen scale into consideration)
     CGRect previewBounds = _filteredPreviewView.bounds;
-    previewBounds.size.width *= [UIScreen mainScreen].scale;
-    previewBounds.size.height *= [UIScreen mainScreen].scale;
+    previewBounds.size.width *= screenScale;
+    previewBounds.size.height *= screenScale;
     [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
     [_filteredPreviewView display];
     
@@ -2636,8 +2650,8 @@ typedef void (^PBJVisionBlock)();
 //    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     
     CGRect smallPreviewBounds = _filteredSmallPreviewView.bounds;
-    smallPreviewBounds.size.width *= [UIScreen mainScreen].scale;
-    smallPreviewBounds.size.height *= [UIScreen mainScreen].scale;
+    smallPreviewBounds.size.width *= screenScale;
+    smallPreviewBounds.size.height *= screenScale;
     [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
     [_filteredSmallPreviewView display];
     
