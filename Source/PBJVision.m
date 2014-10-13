@@ -2575,9 +2575,10 @@ typedef void (^PBJVisionBlock)();
     NSDictionary *options = @{ (id)kCIImageColorSpace : (id)kCFNull };
     CIImage *image = [CIImage imageWithCVPixelBuffer:imageBuffer options:options];
     
+    CGSize previewSize = _filteredPreviewView.layer.frame.size;
     CGRect sourceExtent = image.extent;
     CGFloat sourceAspect = sourceExtent.size.width / sourceExtent.size.height;
-    CGFloat previewAspect = _filteredPreviewView.bounds.size.width  / _filteredPreviewView.bounds.size.height;
+    CGFloat previewAspect = previewSize.width  / previewSize.height;
     
     // we want to maintain the aspect radio of the screen size, so we clip the video image
     // NOTE: the lines that set origin are commented out because they resulted in a bug in landscape iPad
@@ -2636,7 +2637,7 @@ typedef void (^PBJVisionBlock)();
     }
     
     // draw the preview view (taking screen scale into consideration)
-    CGRect previewBounds = _filteredPreviewView.bounds;
+    CGRect previewBounds = CGRectMake(0, 0, previewSize.width, previewSize.height);
     previewBounds.size.width *= screenScale;
     previewBounds.size.height *= screenScale;
     [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
@@ -2656,7 +2657,8 @@ typedef void (^PBJVisionBlock)();
 //    glEnable(GL_BLEND);
 //    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     
-    CGRect smallPreviewBounds = _filteredSmallPreviewView.bounds;
+    CGSize smallPreviewSize = _filteredSmallPreviewView.layer.frame.size;
+    CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
     smallPreviewBounds.size.width *= screenScale;
     smallPreviewBounds.size.height *= screenScale;
     [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
