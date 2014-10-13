@@ -2580,17 +2580,19 @@ typedef void (^PBJVisionBlock)();
     CGFloat previewAspect = _filteredPreviewView.bounds.size.width  / _filteredPreviewView.bounds.size.height;
     
     // we want to maintain the aspect radio of the screen size, so we clip the video image
+    // NOTE: the lines that set origin are commented out because they resulted in a bug in landscape iPad
+    // (black bar was on left side because video was moved too far right).
     CGRect drawRect = sourceExtent;
     if (sourceAspect > previewAspect)
     {
         // use full height of the video image, and center crop the width
-        drawRect.origin.x += (drawRect.size.width - drawRect.size.height * previewAspect) / 2.0;
+        //drawRect.origin.x += (drawRect.size.width - drawRect.size.height * previewAspect) / 2.0;
         drawRect.size.width = drawRect.size.height * previewAspect;
     }
     else
     {
         // use full width of the video image, and center crop the height
-        drawRect.origin.y += (drawRect.size.height - drawRect.size.width / previewAspect) / 2.0;
+        //drawRect.origin.y += (drawRect.size.height - drawRect.size.width / previewAspect) / 2.0;
         drawRect.size.height = drawRect.size.width / previewAspect;
     }
     
