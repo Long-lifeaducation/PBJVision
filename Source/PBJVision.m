@@ -923,7 +923,7 @@ typedef void (^PBJVisionBlock)();
     
     self.filteringEnabled = NO;
     NSString *currentHardware = [PBJVision hardwareString];
-    for (NSString *device in @[@"iPhone6", @"iPad3", @"iPhone7"]) {
+    for (NSString *device in @[@"iPhone6", @"iPhone7"]) {
         if ([currentHardware hasPrefix:device]) {
             self.filteringEnabled = YES;
             break;
