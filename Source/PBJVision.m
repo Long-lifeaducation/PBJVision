@@ -801,6 +801,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 - (void)setupPreviewViews
 {
+    DLog(@"resetting preview views...");
     _filteredPreviewView = [[GLKView alloc] initWithFrame:CGRectZero context:_context];
     _filteredPreviewView.enableSetNeedsDisplay = NO;
     
@@ -831,6 +832,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 //        if (shouldMirror)
 //            transform = CGAffineTransformConcat(transform, CGAffineTransformMakeScale(-1.0, 1.0));
 //        _filteredPreviewView.transform = transform;
+    
+    DLog(@"reset preview views!");
 }
 
 #pragma mark - queue helper methods
@@ -1284,7 +1287,7 @@ typedef void (^PBJVisionBlock)();
 - (void)startPreview
 {
     [self _enqueueBlockOnCaptureVideoQueue:^{
-        [self setupPreviewViews];
+        //[self setupPreviewViews];
         [self clearPreviewView];
         
         [self _enqueueBlockOnMainQueue:^{
