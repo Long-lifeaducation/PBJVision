@@ -2102,14 +2102,6 @@ typedef void (^PBJVisionBlock)();
 
     CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     
-    // need to start writing so we have the pixel buffer pool alloc'd and ready...
-    if (_flags.recording && !_flags.videoWritten) {
-        [_mediaWriter startWritingAtTime:kCMTimeZero];
-        // TODO what if it doesn't start??
-        
-        _recordedFrameCount = 0;
-    }
-    
     if (_flags.recording && CMTIME_IS_INVALID(_audioRecordOffset)) {
         // this will grab the info need to compute _audioRecordOffset
         if ([_delegate respondsToSelector:@selector(visionWillStartWritingVideo:)]) {
@@ -2169,6 +2161,14 @@ typedef void (^PBJVisionBlock)();
         if (bufferToWrite) {
             
             CMTime time = CMSampleBufferGetPresentationTimeStamp(bufferToWrite);
+            
+            // need to start writing so we have the pixel buffer pool alloc'd and ready...
+            if (_flags.recording && !_flags.videoWritten) {
+                [_mediaWriter startWritingAtTime:time];
+                // TODO what if it doesn't start??
+                
+                _recordedFrameCount = 0;
+            }
             
 //            if (CMTIME_IS_VALID(_audioRecordOffset)) {
 //                CMSampleBufferRef bufferToWriteTimedWithAudio = [PBJVisionUtilities createOffsetSampleBufferWithSampleBuffer:sampleBuffer usingTimeOffset:_audioRecordOffset];
