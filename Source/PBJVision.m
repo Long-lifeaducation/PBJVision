@@ -170,6 +170,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     
     CMTime _audioRecordOffset;
     
+    CMTime _lastVideoDisplayTimestamp;
+    CMTime _minDisplayDuration;
+    
     // flags
     
     struct {
@@ -685,7 +688,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 {
     [self _enqueueBlockOnCaptureVideoQueue:^{
         _audioRecordOffset = CMTimeSubtract(_startTimestamp, audioStartTimestamp);
-        //DLog(@"_audioRecordOffset: %f", CMTimeGetSeconds(_audioRecordOffset));
+        DLog(@"_audioRecordOffset: %f", CMTimeGetSeconds(_audioRecordOffset));
         
         if (CMTIME_IS_INVALID(_lastTimestamp)) {
             _lastTimestamp = audioStartTimestamp;
@@ -694,6 +697,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         }
         
         DLog(@"_lastTimestamp: %lld %d", _lastTimestamp.value, _lastTimestamp.timescale);
+        
+        [_previousSecondTimestamps removeAllObjects];
     }];
 }
 
@@ -767,6 +772,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         [self setMirroringMode:PBJMirroringOff];
         
         _previousSecondTimestamps = [[NSMutableArray alloc] init];
+        
+        _minDisplayDuration = CMTimeMake(1, 15);
         
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationWillEnterForeground:) name:@"UIApplicationWillEnterForegroundNotification" object:[UIApplication sharedApplication]];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidEnterBackground:) name:@"UIApplicationDidEnterBackgroundNotification" object:[UIApplication sharedApplication]];
@@ -1288,6 +1295,8 @@ typedef void (^PBJVisionBlock)();
     [self _enqueueBlockOnCaptureSessionQueue:^{
         [self _setupCamera];
         [self _setupSession];
+        
+        _lastVideoDisplayTimestamp = kCMTimeInvalid;
         
         if (_previewLayer && _previewLayer.session != _captureSession) {
             _previewLayer.session = _captureSession;
@@ -2615,56 +2624,65 @@ typedef void (^PBJVisionBlock)();
         image = _filter.outputImage;
     }
     
-    [EAGLContext setCurrentContext:_context];
-    
-    [_filteredPreviewView bindDrawable];
-    
-//    // clear eagl view to grey
-//    glClearColor(1.0, 0.0, 0.0, 1.0);
-//    glClear(GL_COLOR_BUFFER_BIT);
-//    
-//    // set the blend mode to "source over" so that CI will use that
-//    glEnable(GL_BLEND);
-//    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    
-    // when drawing the preview we need to scale it by screen scale to handle correct
-    // pixel density. iphone 6+ has a different density than any other device, and it's
-    // not reflected in the UIScreen scale because we aren't fully supporting that
-    // screen size yet (the OS simulates it using a scale of 2 when the actual device pixel ratio is 2.6)
-    CGFloat screenScale = [UIScreen mainScreen].scale;
-    if ( self.isiPhone6Plus ) {
-        screenScale = 2.6;
-    }
-    
-    // draw the preview view (taking screen scale into consideration)
-    CGRect previewBounds = CGRectMake(0, 0, previewSize.width, previewSize.height);
-    previewBounds.size.width *= screenScale;
-    previewBounds.size.height *= screenScale;
-    [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
-    [_filteredPreviewView display];
-    
-    ////////////////////////
-    
-    [EAGLContext setCurrentContext:_contextPreview];
+    CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+    if (CMTIME_IS_INVALID(_lastVideoDisplayTimestamp) || CMTIME_COMPARE_INLINE(_lastVideoDisplayTimestamp, >, currentTimestamp) || CMTIME_COMPARE_INLINE(CMTimeSubtract(currentTimestamp, _lastVideoDisplayTimestamp), >, _minDisplayDuration)) {
+        
+        [EAGLContext setCurrentContext:_context];
+        
+        [_filteredPreviewView bindDrawable];
+        
+    //    // clear eagl view to grey
+    //    glClearColor(1.0, 0.0, 0.0, 1.0);
+    //    glClear(GL_COLOR_BUFFER_BIT);
+    //    
+    //    // set the blend mode to "source over" so that CI will use that
+    //    glEnable(GL_BLEND);
+    //    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        
+        // when drawing the preview we need to scale it by screen scale to handle correct
+        // pixel density. iphone 6+ has a different density than any other device, and it's
+        // not reflected in the UIScreen scale because we aren't fully supporting that
+        // screen size yet (the OS simulates it using a scale of 2 when the actual device pixel ratio is 2.6)
+        CGFloat screenScale = [UIScreen mainScreen].scale;
+        if ( self.isiPhone6Plus ) {
+            screenScale = 2.6;
+        }
+        
+        // draw the preview view (taking screen scale into consideration)
+        CGRect previewBounds = CGRectMake(0, 0, previewSize.width, previewSize.height);
+        previewBounds.size.width *= screenScale;
+        previewBounds.size.height *= screenScale;
+        [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
+        [_filteredPreviewView display];
+        
+        ////////////////////////
+        
+        [EAGLContext setCurrentContext:_contextPreview];
 
-    [_filteredSmallPreviewView bindDrawable];
-    
-//    // clear eagl view to grey
-//    glClearColor(1.0, 0.0, 0.0, 1.0);
-//    glClear(GL_COLOR_BUFFER_BIT);
-//    
-//    // set the blend mode to "source over" so that CI will use that
-//    glEnable(GL_BLEND);
-//    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    
-    CGSize smallPreviewSize = _filteredSmallPreviewView.layer.frame.size;
-    CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
-    smallPreviewBounds.size.width *= screenScale;
-    smallPreviewBounds.size.height *= screenScale;
-    [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
-    [_filteredSmallPreviewView display];
-    
-    ////////////////////////
+        [_filteredSmallPreviewView bindDrawable];
+        
+    //    // clear eagl view to grey
+    //    glClearColor(1.0, 0.0, 0.0, 1.0);
+    //    glClear(GL_COLOR_BUFFER_BIT);
+    //    
+    //    // set the blend mode to "source over" so that CI will use that
+    //    glEnable(GL_BLEND);
+    //    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        
+        CGSize smallPreviewSize = _filteredSmallPreviewView.layer.frame.size;
+        CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
+        smallPreviewBounds.size.width *= screenScale;
+        smallPreviewBounds.size.height *= screenScale;
+        [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
+        [_filteredSmallPreviewView display];
+        
+        ////////////////////////
+        
+        _lastVideoDisplayTimestamp = currentTimestamp;
+        
+//        [self calculateFramerateAtTimestamp:currentTimestamp];
+//        NSLog(@"fps: %f", _frameRate);
+    }
     
     CIImage* cropImage = [image imageByCroppingToRect:drawRect];
     cropImage = [cropImage imageByApplyingTransform:CGAffineTransformMakeTranslation(0, -drawRect.origin.y)];
