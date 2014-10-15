@@ -1287,7 +1287,7 @@ typedef void (^PBJVisionBlock)();
 - (void)startPreview
 {
     [self _enqueueBlockOnCaptureVideoQueue:^{
-        //[self setupPreviewViews];
+        [self setupPreviewViews];
         [self clearPreviewView];
         
         [self _enqueueBlockOnMainQueue:^{
