@@ -173,6 +173,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     CMTime _lastVideoDisplayTimestamp;
     CMTime _minDisplayDuration;
     
+    unsigned long _recordedFrameCount;
+    
     // flags
     
     struct {
@@ -1910,6 +1912,9 @@ typedef void (^PBJVisionBlock)();
         void (^finishWritingCompletionHandler)(void) = ^{
             Float64 capturedDuration = self.capturedVideoSeconds;
             
+            Float64 averageFrameRate = (Float64)_recordedFrameCount / capturedDuration;
+            DLog(@"averageFrameRate %f", averageFrameRate)
+            
             _lastTimestamp = kCMTimeInvalid;
             _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
             _flags.interrupted = NO;
@@ -2101,6 +2106,8 @@ typedef void (^PBJVisionBlock)();
     if (_flags.recording && !_flags.videoWritten) {
         [_mediaWriter startWritingAtTime:kCMTimeZero];
         // TODO what if it doesn't start??
+        
+        _recordedFrameCount = 0;
     }
     
     if (_flags.recording && CMTIME_IS_INVALID(_audioRecordOffset)) {
@@ -2184,6 +2191,7 @@ typedef void (^PBJVisionBlock)();
                 if (_flags.recording && !_flags.paused && !_flags.interrupted && (!_flags.videoWritten || CMTIME_COMPARE_INLINE(time, >=, _mediaWriter.videoTimestamp))) {
                     [_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeVideo withPixelBuffer:filteredPixelBuffer];
                     _flags.videoWritten = YES;
+                    _recordedFrameCount++;
                     //DLog(@"wrote buffer at %lld %d", _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);
                 }
                 else {
