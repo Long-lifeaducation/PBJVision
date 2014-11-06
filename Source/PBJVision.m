@@ -2695,6 +2695,14 @@ typedef void (^PBJVisionBlock)();
 //        NSLog(@"fps: %f", _frameRate);
     }
     
+    // undo manual mirroring before writing!
+    if (!_shouldRecordMirrored && _cameraDevice == PBJCameraDeviceFront)
+    {
+        CGSize size = [image extent].size;
+        image = [image imageByApplyingTransform:CGAffineTransformMakeScale(-1.0, 1.0)];
+        image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
+    }
+    
     CIImage* cropImage = [image imageByCroppingToRect:drawRect];
     cropImage = [cropImage imageByApplyingTransform:CGAffineTransformMakeTranslation(0, -drawRect.origin.y)];
     CVPixelBufferRef renderedOutputPixelBuffer = NULL;

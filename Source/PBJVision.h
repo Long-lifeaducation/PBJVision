@@ -164,6 +164,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 @property (nonatomic, readonly) GLKView *filteredSmallPreviewView;
 @property (nonatomic) CIFilter *filter;
 
+@property (nonatomic) BOOL shouldRecordMirrored;
+
 - (void)startPreview;
 - (void)stopPreview;
 
