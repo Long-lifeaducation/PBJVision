@@ -34,6 +34,7 @@
 
 #include <sys/types.h>
 #include <sys/sysctl.h>
+#import <client-magic/MagicLogger.h>
 
 #define LOG_VISION 1
 #ifndef DLog
@@ -793,9 +794,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         [self setMirroringMode:PBJMirroringOff];
         
         _previousSecondTimestamps = [[NSMutableArray alloc] init];
-        
-        _minDisplayDuration = CMTimeMake(1, 15);
-        
+        // controls max frame-rate for both capture preview (solo) and duet playback
+        _minDisplayDuration = CMTimeMake(1, 10);
+
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationWillEnterForeground:) name:@"UIApplicationWillEnterForegroundNotification" object:[UIApplication sharedApplication]];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidEnterBackground:) name:@"UIApplicationDidEnterBackgroundNotification" object:[UIApplication sharedApplication]];
     }
@@ -1937,7 +1938,7 @@ typedef void (^PBJVisionBlock)();
             Float64 capturedDuration = self.capturedVideoSeconds;
             
             Float64 averageFrameRate = (Float64)_recordedFrameCount / capturedDuration;
-            DLog(@"averageFrameRate %f", averageFrameRate)
+            LogError(@"averageFrameRate %f", averageFrameRate)
             
             _lastTimestamp = kCMTimeInvalid;
             _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
