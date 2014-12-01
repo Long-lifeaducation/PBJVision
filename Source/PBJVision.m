@@ -142,6 +142,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
     CMTime _startTimestamp;
     CMTime _lastTimestamp;
+    CMTime _lastPauseTimestamp;
+    CMTime _totalPauseTime;
     
     CMTime _maximumCaptureDuration;
 
@@ -694,13 +696,30 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         
         if (CMTIME_IS_INVALID(_lastTimestamp)) {
             _lastTimestamp = audioStartTimestamp;
+            _startTimestamp = audioStartTimestamp;
         } else {
-            _lastTimestamp = CMTimeSubtract(audioStartTimestamp, _mediaWriter.videoTimestamp);
+//            _lastTimestamp = CMTimeSubtract(audioStartTimestamp, _mediaWriter.videoTimestamp);
+//            DLog(@"_mediaWriter.videoTimestamp: %f", CMTimeGetSeconds(_mediaWriter.videoTimestamp));
+            
+            if (CMTIME_IS_VALID(_lastPauseTimestamp)) {
+                CMTime thisPauseTime = CMTimeSubtract(audioStartTimestamp, _lastPauseTimestamp);
+                _totalPauseTime = CMTimeAdd(_totalPauseTime, thisPauseTime);
+                _lastTimestamp = CMTimeAdd(_startTimestamp, _totalPauseTime);
+                _lastPauseTimestamp = kCMTimeInvalid;
+                NSLog(@"_totalPauseTime: %f", CMTimeGetSeconds(_totalPauseTime));
+            }
         }
         
         DLog(@"_lastTimestamp: %lld %d", _lastTimestamp.value, _lastTimestamp.timescale);
         
         [_previousSecondTimestamps removeAllObjects];
+    }];
+}
+
+- (void)setAudioStopTimestamp:(CMTime)audioStopTimestamp
+{
+    [self _enqueueBlockOnCaptureVideoQueue:^{
+        _lastPauseTimestamp = audioStopTimestamp;
     }];
 }
 
@@ -1835,6 +1854,8 @@ typedef void (^PBJVisionBlock)();
         //_lastTimestamp = _startTimestamp;
         _lastAudioTimestamp = kCMTimeInvalid;
         _audioRecordOffset = kCMTimeInvalid;
+        _totalPauseTime = kCMTimeZero;
+        _lastPauseTimestamp = kCMTimeInvalid;
         
         _flags.recording = YES;
         _flags.paused = NO;
@@ -1884,7 +1905,7 @@ typedef void (^PBJVisionBlock)();
  
         DLog(@"resuming video capture");
        
-        _audioRecordOffset = kCMTimeInvalid;
+        //_audioRecordOffset = kCMTimeInvalid;
         _flags.paused = NO;
         _flags.interrupted = NO;
         
@@ -1893,7 +1914,7 @@ typedef void (^PBJVisionBlock)();
             if ([_delegate respondsToSelector:@selector(visionDidResumeVideoCapture:)])
                 [_delegate visionDidResumeVideoCapture:self];
         }];
-    }];    
+    }];
 }
 
 - (void)endVideoCapture
@@ -2191,7 +2212,7 @@ typedef void (^PBJVisionBlock)();
             
             if (filteredPixelBuffer) {
                 // update video and the last timestamp
-                if (_flags.recording && !_flags.paused && !_flags.interrupted && (!_flags.videoWritten || CMTIME_COMPARE_INLINE(time, >=, _mediaWriter.videoTimestamp))) {
+                if (_flags.recording && !_flags.paused && CMTIME_IS_INVALID(_lastPauseTimestamp) && !_flags.interrupted && (!_flags.videoWritten || CMTIME_COMPARE_INLINE(time, >=, _mediaWriter.videoTimestamp))) {
                     [_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeVideo withPixelBuffer:filteredPixelBuffer];
                     _flags.videoWritten = YES;
                     _recordedFrameCount++;

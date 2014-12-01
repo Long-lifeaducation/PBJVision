@@ -211,7 +211,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 @property (nonatomic, readonly) Float64 capturedAudioSeconds;
 @property (nonatomic, readonly) Float64 capturedVideoSeconds;
 
-@property (nonatomic, assign) CMTime audioStartTimestamp;
+- (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp;
+- (void)setAudioStopTimestamp:(CMTime)audioStopTimestamp;
 
 - (void)setupVideoCapture;
 - (void)startVideoCapture;
