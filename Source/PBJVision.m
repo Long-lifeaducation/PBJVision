@@ -795,7 +795,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         
         _previousSecondTimestamps = [[NSMutableArray alloc] init];
         // controls max frame-rate for both capture preview (solo) and duet playback
-        _minDisplayDuration = CMTimeMake(1, 5);
+        _minDisplayDuration = CMTimeMake(1, 15);
 
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationWillEnterForeground:) name:@"UIApplicationWillEnterForegroundNotification" object:[UIApplication sharedApplication]];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidEnterBackground:) name:@"UIApplicationDidEnterBackgroundNotification" object:[UIApplication sharedApplication]];
