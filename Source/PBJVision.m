@@ -245,6 +245,11 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 #pragma mark - getters/setters
 
+- (void)setPreviewFrameRate:(int)frameRate
+{
+    _minDisplayDuration = CMTimeMake(1, frameRate);
+}
+
 - (BOOL)isCaptureSessionActive
 {
     return ([_captureSession isRunning]);
