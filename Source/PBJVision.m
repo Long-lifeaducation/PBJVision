@@ -35,6 +35,7 @@
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #import <client-magic/MagicLogger.h>
+#import <client-magic/UIDevice+Magic.h> 
 
 #define LOG_VISION 1
 #ifndef DLog
@@ -967,9 +968,22 @@ typedef void (^PBJVisionBlock)();
         }
     }
     
-    self.isiPhone6Plus = NO;
-    if ( [currentHardware hasPrefix:@"iPhone7,1"] ) {
-        self.isiPhone6Plus = YES;
+    // when drawing the preview we need to scale it by screen scale to handle correct
+    // pixel density. iphone 6+ has a different density than any other device, and it's
+    // not reflected in the UIScreen scale because we aren't fully supporting that
+    // screen size yet (the OS simulates it using a scale of 2 when the actual device pixel ratio is 2.6)
+    
+    if ([UIDevice isIOSVersion8x])
+    {
+        // Ensures proper scale regardless of zoom setting on iPhone display zoom setting.
+        // Relevant for both iPhone 6 and 6Plus models. At some point we can stop initing
+        // with default scale method above (when iOS8 is our min deployment target).
+        
+        self.screenScale = [UIScreen mainScreen].nativeScale;
+    }
+    else
+    {
+        self.screenScale = [UIScreen mainScreen].scale;
     }
     
     // add notification observers
@@ -2677,19 +2691,10 @@ typedef void (^PBJVisionBlock)();
     //    glEnable(GL_BLEND);
     //    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         
-        // when drawing the preview we need to scale it by screen scale to handle correct
-        // pixel density. iphone 6+ has a different density than any other device, and it's
-        // not reflected in the UIScreen scale because we aren't fully supporting that
-        // screen size yet (the OS simulates it using a scale of 2 when the actual device pixel ratio is 2.6)
-        CGFloat screenScale = [UIScreen mainScreen].scale;
-        if ( self.isiPhone6Plus ) {
-            screenScale = 2.6;
-        }
-        
         // draw the preview view (taking screen scale into consideration)
         CGRect previewBounds = CGRectMake(0, 0, previewSize.width, previewSize.height);
-        previewBounds.size.width *= screenScale;
-        previewBounds.size.height *= screenScale;
+        previewBounds.size.width *= _screenScale;
+        previewBounds.size.height *= _screenScale;
         [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
         [_filteredPreviewView display];
         
@@ -2709,8 +2714,8 @@ typedef void (^PBJVisionBlock)();
         
         CGSize smallPreviewSize = _filteredSmallPreviewView.layer.frame.size;
         CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
-        smallPreviewBounds.size.width *= screenScale;
-        smallPreviewBounds.size.height *= screenScale;
+        smallPreviewBounds.size.width *= _screenScale;
+        smallPreviewBounds.size.height *= _screenScale;
         [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
         [_filteredSmallPreviewView display];
         
