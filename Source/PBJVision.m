@@ -1048,7 +1048,10 @@ typedef void (^PBJVisionBlock)();
     // capture device notifications
     [notificationCenter removeObserver:self name:AVCaptureDeviceSubjectAreaDidChangeNotification object:nil];
 
+    // need to remove KVO observer before releasing to avoid crash
+    [_captureOutputPhoto removeObserver:self forKeyPath:@"capturingStillImage"];
     _captureOutputPhoto = nil;
+    
     _captureOutputAudio = nil;
     _captureOutputVideo = nil;
     
