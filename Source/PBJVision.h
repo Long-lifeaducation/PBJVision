@@ -25,6 +25,7 @@
 
 #import <Foundation/Foundation.h>
 #import <AVFoundation/AVFoundation.h>
+#import "GPUImage.h"
 
 // vision types
 
@@ -64,9 +65,9 @@ typedef NS_ENUM(NSInteger, PBJFlashMode) {
 };
 
 typedef NS_ENUM(NSInteger, PBJMirroringMode) {
-	PBJMirroringAuto,
-	PBJMirroringOn,
-	PBJMirroringOff
+    PBJMirroringAuto,
+    PBJMirroringOn,
+    PBJMirroringOff
 };
 
 typedef NS_ENUM(NSInteger, PBJAuthorizationStatus) {
@@ -162,6 +163,7 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 @property (nonatomic, readonly) GLKView *filteredPreviewView;
 @property (nonatomic, readonly) GLKView *filteredSmallPreviewView;
+@property (nonatomic) CIFilter *filter;
 
 - (void)startPreview;
 - (void)stopPreview;
@@ -221,9 +223,9 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 - (void)cancelVideoCapture;
 - (void)setPreviewFrameRate:(int)frameRate;
 
-// filter
-- (void)toggleFilter;
-- (void)changeIntensity:(CGFloat)value;
+// Testing
+- (CVPixelBufferRef)pixelBuffer;
+- (GPUImageRawDataInput*)rawDataInput;
 
 @end
 
