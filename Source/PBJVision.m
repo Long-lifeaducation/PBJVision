@@ -2241,17 +2241,18 @@ typedef void (^PBJVisionBlock)();
                 
                 size_t height = CVPixelBufferGetHeight(filteredPixelBuffer);
                 size_t width = CVPixelBufferGetWidth(filteredPixelBuffer);
+                size_t bytes = CVPixelBufferGetBytesPerRow(filteredPixelBuffer);
                 GLubyte *rawDataBytes = (GLubyte*)CVPixelBufferGetBaseAddress(filteredPixelBuffer);
                 
                 if(!_rawDataInput)
                 {
-                    GLubyte *bytes = calloc(360 * 360 * 4, sizeof(GLubyte));
-                    _rawDataInput = [[GPUImageRawDataInput alloc] initWithBytes:bytes size:CGSizeMake(360, 360) pixelFormat:GPUPixelFormatBGRA type:GPUPixelTypeUByte];
+                    GLubyte *bytes = calloc(368 * 360 * 4, sizeof(GLubyte));
+                    _rawDataInput = [[GPUImageRawDataInput alloc] initWithBytes:bytes size:CGSizeMake(368, 360) pixelFormat:GPUPixelFormatBGRA type:GPUPixelTypeUByte];
                 }
                 
                 else
                 {
-                    [_rawDataInput updateDataFromBytes:rawDataBytes size:CGSizeMake(width, height)];
+                    [_rawDataInput updateDataFromBytes:rawDataBytes size:CGSizeMake(368, 360)];
                 }
                 
                 [_rawDataInput processData];
@@ -2749,7 +2750,7 @@ typedef void (^PBJVisionBlock)();
         previewBounds.size.width *= _screenScale;
         previewBounds.size.height *= _screenScale;
         [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
-        [_filteredPreviewView display];
+        //[_filteredPreviewView display];
         
         ////////////////////////
         
