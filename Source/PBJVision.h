@@ -222,7 +222,9 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 - (void)endVideoCapture;
 - (void)cancelVideoCapture;
 - (void)setPreviewFrameRate:(int)frameRate;
+
 - (GPUImageRawDataInput*)rawDataInput;
+- (CIImage*)lastFrame;
 
 @end
 
