@@ -180,7 +180,6 @@ PBJMediaWriterDelegate>
     
     CVPixelBufferRef _pixelBuffer;
     GPUImageRawDataInput *_rawDataInput;
-    CIImage *_lastFrame;
     
     unsigned long _recordedFrameCount;
     
@@ -2353,11 +2352,6 @@ typedef void (^PBJVisionBlock)();
     return _rawDataInput;
 }
 
-- (CIImage*)lastFrame
-{
-    return _lastFrame;
-}
-
 - (void)calculateFramerateAtTimestamp:(CMTime)timestamp
 {
     [_previousSecondTimestamps addObject:[NSValue valueWithCMTime:timestamp]];
@@ -2789,7 +2783,7 @@ typedef void (^PBJVisionBlock)();
     
     CIImage* cropImage = [image imageByCroppingToRect:drawRect];
     cropImage = [cropImage imageByApplyingTransform:CGAffineTransformMakeTranslation(0, -drawRect.origin.y)];
-    _lastFrame = cropImage;
+    
     CVPixelBufferRef renderedOutputPixelBuffer = NULL;
     if (_mediaWriter.videoReady) {
         CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
