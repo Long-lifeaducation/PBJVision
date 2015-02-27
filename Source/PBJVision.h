@@ -118,11 +118,14 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 @class EAGLContext;
 @class GLKView;
 @protocol PBJVisionDelegate;
+@protocol PBJVisionFilterDelegate;
 @interface PBJVision : NSObject
 
 + (PBJVision *)sharedInstance;
 
 @property (nonatomic, weak) id<PBJVisionDelegate> delegate;
+
+@property (nonatomic, weak) id<PBJVisionFilterDelegate> filterDelegate;
 
 // session
 
@@ -295,5 +298,11 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 - (void)vision:(PBJVision *)vision didCaptureVideoSampleBuffer:(CMSampleBufferRef)sampleBuffer;
 - (void)vision:(PBJVision *)vision didCaptureAudioSample:(CMSampleBufferRef)sampleBuffer;
+
+@end
+
+@protocol PBJVisionFilterDelegate
+
+- (void)visionDidOutputSamples:(CVPixelBufferRef)pixelBuffer;
 
 @end

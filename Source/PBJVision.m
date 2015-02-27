@@ -2236,6 +2236,11 @@ typedef void (^PBJVisionBlock)();
             if (_flags.videoRenderingEnabled) {
                 filteredPixelBuffer = [self _processSampleBuffer:bufferToWrite];
                 
+//                if ([_filterDelegate respondsToSelector:@selector(vision:didCaptureVideoSampleBuffer:)])
+//                {
+//                    [_delegate vision:self didCaptureVideoSampleBuffer:bufferToWrite];
+//                }
+                
                 // GPUImage
                 CVPixelBufferLockBaseAddress( filteredPixelBuffer, 0 );
                 
@@ -2733,52 +2738,52 @@ typedef void (^PBJVisionBlock)();
     CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     if (CMTIME_IS_INVALID(_lastVideoDisplayTimestamp) || CMTIME_COMPARE_INLINE(_lastVideoDisplayTimestamp, >, currentTimestamp) || CMTIME_COMPARE_INLINE(CMTimeSubtract(currentTimestamp, _lastVideoDisplayTimestamp), >, _minDisplayDuration)) {
         
-        [EAGLContext setCurrentContext:_context];
-        
-        [_filteredPreviewView bindDrawable];
-        
-        //    // clear eagl view to grey
-        //    glClearColor(1.0, 0.0, 0.0, 1.0);
-        //    glClear(GL_COLOR_BUFFER_BIT);
-        //
-        //    // set the blend mode to "source over" so that CI will use that
-        //    glEnable(GL_BLEND);
-        //    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-        
-        // draw the preview view (taking screen scale into consideration)
-        CGRect previewBounds = CGRectMake(0, 0, previewSize.width, previewSize.height);
-        previewBounds.size.width *= _screenScale;
-        previewBounds.size.height *= _screenScale;
-        [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
-        [_filteredPreviewView display];
-        
-        ////////////////////////
-        
-        [EAGLContext setCurrentContext:_contextPreview];
-        
-        [_filteredSmallPreviewView bindDrawable];
-        
-        //    // clear eagl view to grey
-        //    glClearColor(1.0, 0.0, 0.0, 1.0);
-        //    glClear(GL_COLOR_BUFFER_BIT);
-        //
-        //    // set the blend mode to "source over" so that CI will use that
-        //    glEnable(GL_BLEND);
-        //    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-        
-        CGSize smallPreviewSize = _filteredSmallPreviewView.layer.frame.size;
-        CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
-        smallPreviewBounds.size.width *= _screenScale;
-        smallPreviewBounds.size.height *= _screenScale;
-        [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
-        [_filteredSmallPreviewView display];
-        
-        ////////////////////////
-        
-        _lastVideoDisplayTimestamp = currentTimestamp;
-        
-        //        [self calculateFramerateAtTimestamp:currentTimestamp];
-        //        NSLog(@"fps: %f", _frameRate);
+//        [EAGLContext setCurrentContext:_context];
+//        
+//        [_filteredPreviewView bindDrawable];
+//        
+//        //    // clear eagl view to grey
+//        //    glClearColor(1.0, 0.0, 0.0, 1.0);
+//        //    glClear(GL_COLOR_BUFFER_BIT);
+//        //
+//        //    // set the blend mode to "source over" so that CI will use that
+//        //    glEnable(GL_BLEND);
+//        //    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+//        
+//        // draw the preview view (taking screen scale into consideration)
+//        CGRect previewBounds = CGRectMake(0, 0, previewSize.width, previewSize.height);
+//        previewBounds.size.width *= _screenScale;
+//        previewBounds.size.height *= _screenScale;
+//        [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
+//        [_filteredPreviewView display];
+//        
+//        ////////////////////////
+//        
+//        [EAGLContext setCurrentContext:_contextPreview];
+//        
+//        [_filteredSmallPreviewView bindDrawable];
+//        
+//        //    // clear eagl view to grey
+//        //    glClearColor(1.0, 0.0, 0.0, 1.0);
+//        //    glClear(GL_COLOR_BUFFER_BIT);
+//        //
+//        //    // set the blend mode to "source over" so that CI will use that
+//        //    glEnable(GL_BLEND);
+//        //    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+//        
+//        CGSize smallPreviewSize = _filteredSmallPreviewView.layer.frame.size;
+//        CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
+//        smallPreviewBounds.size.width *= _screenScale;
+//        smallPreviewBounds.size.height *= _screenScale;
+//        [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
+//        [_filteredSmallPreviewView display];
+//        
+//        ////////////////////////
+//        
+//        _lastVideoDisplayTimestamp = currentTimestamp;
+//        
+//        //        [self calculateFramerateAtTimestamp:currentTimestamp];
+//        //        NSLog(@"fps: %f", _frameRate);
     }
     
     CIImage* cropImage = [image imageByCroppingToRect:drawRect];
