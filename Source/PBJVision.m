@@ -754,30 +754,14 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         _ciContext = [CIContext contextWithEAGLContext:_context options:options];
         _ciContextPreview = [CIContext contextWithEAGLContext:_contextPreview options:options];
         
-//        _filter = [CIFilter filterWithName:@"CISepiaTone"];
-//        [_filter setValue:@(1.0) forKey:@"inputIntensity"];
-        
-//        _filter = [CIFilter filterWithName:@"CIPixellate"];
-//        [_filter setValue:@(8.0) forKeyPath:@"inputScale"];
-        
-//        _filter = [CIFilter filterWithName:@"CIPhotoEffectProcess"];
         _filter = [CIFilter filterWithName:@"CIPhotoEffectChrome"];
         
-//        _filter = [CIFilter filterWithName:@"CIColorMatrix" keysAndValues:
-//                   @"inputRVector",    [CIVector vectorWithX:1.0 Y:0.02 Z:0.16],
-//                   @"inputGVector",    [CIVector vectorWithX:-0.13 Y:1.0 Z:0.12 ],
-//                   @"inputBVector",    [CIVector vectorWithX:0.23 Y:0.01 Z:1.0],
-//                   @"inputBiasVector", [CIVector vectorWithX:0 Y:0 Z:0], nil];
-        
-        //_captureSessionPreset = AVCaptureSessionPresetHigh;
-        //_captureSessionPreset = AVCaptureSessionPreset640x480;
+        // set default capture preset
         _captureSessionPreset = AVCaptureSessionPresetMedium;
-        //_captureSessionPreset = AVCaptureSessionPresetLow;
 
         // Average bytes per second based on video dimensions
         // lower the bitRate, higher the compression
         _videoBitRate = PBJVideoBitRate480x360;
-        //_videoBitRate = PBJVideoBitRate640x480;
 
         // default audio/video configuration
         _audioBitRate = 64000;
@@ -828,36 +812,19 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 - (void)setupPreviewViews
 {
     DLog(@"resetting preview views...");
+    
     _filteredPreviewView = [[GLKView alloc] initWithFrame:CGRectZero context:_context];
     _filteredPreviewView.enableSetNeedsDisplay = NO;
-    
-    // bind the frame buffer to get the frame buffer width and height;
-    // the bounds used by CIContext when drawing to a GLKView are in pixels (not points),
-    // hence the need to read from the frame buffer's width and height;
-    // in addition, since we will be accessing the bounds in another queue (_captureSessionQueue),
-    // we want to obtain this piece of information so that we won't be
-    // accessing _videoPreviewView's properties from another thread/queue
-    [_filteredPreviewView bindDrawable];
     _filteredPreviewView.frame = CGRectMake(0, 0, 640, 640);
     
-    [_filteredSmallPreviewView bindDrawable];
-    _filteredSmallPreviewView = [[GLKView alloc] initWithFrame:CGRectZero context:_contextPreview];
-    _filteredSmallPreviewView.enableSetNeedsDisplay = NO;
-    [_filteredSmallPreviewView bindDrawable];
     CGRect smallPreviewBounds = _filteredPreviewView.bounds;
     static const float scale = 0.2;
     smallPreviewBounds.size.width = smallPreviewBounds.size.width * scale;
     smallPreviewBounds.size.height = smallPreviewBounds.size.height * scale;
-    _filteredSmallPreviewView.frame = smallPreviewBounds;
     
-//        // because the native video image from the back camera is in UIDeviceOrientationLandscapeLeft (i.e. the home button is on the right), we need to apply a clockwise 90 degree transform so that we can draw the video preview as if we were in a landscape-oriented view; if you're using the front camera and you want to have a mirrored preview (so that the user is seeing themselves in the mirror), you need to apply an additional horizontal flip (by concatenating CGAffineTransformMakeScale(-1.0, 1.0) to the rotation transform)
-//        CGAffineTransform transform = CGAffineTransformMakeRotation(M_PI_2);
-// apply the horizontal flip
-//        CGAffineTransform transform = CGAffineTransformIdentity;
-//        BOOL shouldMirror = YES;
-//        if (shouldMirror)
-//            transform = CGAffineTransformConcat(transform, CGAffineTransformMakeScale(-1.0, 1.0));
-//        _filteredPreviewView.transform = transform;
+    _filteredSmallPreviewView = [[GLKView alloc] initWithFrame:CGRectZero context:_contextPreview];
+    _filteredSmallPreviewView.enableSetNeedsDisplay = NO;
+    _filteredSmallPreviewView.frame = smallPreviewBounds;
     
     DLog(@"reset preview views!");
 }
@@ -2600,7 +2567,7 @@ typedef void (^PBJVisionBlock)();
 - (void)clearPreviewView
 {
     [EAGLContext setCurrentContext:_context];
-    
+
     [_filteredPreviewView bindDrawable];
     
     glClearColor(0.0, 0.0, 0.0, 1.0);
@@ -2624,46 +2591,20 @@ typedef void (^PBJVisionBlock)();
 // processing is done on the GPU, operation WAY more efficient than converting on the CPU
 - (CVPixelBufferRef)_processSampleBuffer:(CMSampleBufferRef)sampleBuffer
 {
-    if (!_context)
+    if (!_context || !_videoTextureCache) {
         return NULL;
-
-    if (!_videoTextureCache)
-        return NULL;
-
-    CVImageBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
-
-    if (CVPixelBufferLockBaseAddress(imageBuffer, 0) != kCVReturnSuccess)
-        return NULL;
+    }
     
-    // null colorspace to avoid colormatching
+    // convert to CV image buffer and lock the address to guarantee memory stays available
+    CVImageBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+    if (CVPixelBufferLockBaseAddress(imageBuffer, 0) != kCVReturnSuccess) {
+        return NULL;
+    }
+    
+    // convert this sample buffer into a CIImage (null colorspace to avoid colormatching)
     NSDictionary *options = @{ (id)kCIImageColorSpace : (id)kCFNull };
     CIImage *image = [CIImage imageWithCVPixelBuffer:imageBuffer options:options];
-    
-    CGSize previewSize = _filteredPreviewView.layer.frame.size;
     CGRect sourceExtent = image.extent;
-    CGFloat sourceAspect = sourceExtent.size.width / sourceExtent.size.height;
-    CGFloat previewAspect = previewSize.width  / previewSize.height;
-    
-    // we want to maintain the aspect radio of the screen size, so we clip the video image
-    // NOTE: the lines that set origin are commented out because they resulted in a bug in landscape iPad
-    // (black bar was on left side because video was moved too far right).
-    CGRect drawRect = sourceExtent;
-    if (sourceAspect > previewAspect)
-    {
-        // use full height of the video image, and center crop the width
-        //drawRect.origin.x += (drawRect.size.width - drawRect.size.height * previewAspect) / 2.0;
-        drawRect.size.width = drawRect.size.height * previewAspect;
-    }
-    else
-    {
-        // use full width of the video image, and center crop the height
-        //drawRect.origin.y += (drawRect.size.height - drawRect.size.width / previewAspect) / 2.0;
-        drawRect.size.height = drawRect.size.width / previewAspect;
-    }
-    
-//    image = [image imageByApplyingTransform:CGAffineTransformMakeRotation(-M_PI/2.0)];
-//    CGPoint origin = [image extent].origin;
-//    image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(-origin.x, -origin.y)];
     
     // manual mirroring!
     if (_cameraDevice == PBJCameraDeviceFront)
@@ -2673,48 +2614,36 @@ typedef void (^PBJVisionBlock)();
         image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
     }
     
+    // apply filter
     if (_filter && _filteringEnabled)
     {
         [_filter setValue:image forKey:kCIInputImageKey];
         image = _filter.outputImage;
     }
     
+    // draw filtered image into preview view if enough time has past since last drawing
     CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-    if (CMTIME_IS_INVALID(_lastVideoDisplayTimestamp) || CMTIME_COMPARE_INLINE(_lastVideoDisplayTimestamp, >, currentTimestamp) || CMTIME_COMPARE_INLINE(CMTimeSubtract(currentTimestamp, _lastVideoDisplayTimestamp), >, _minDisplayDuration)) {
+    if (CMTIME_IS_INVALID(_lastVideoDisplayTimestamp) ||
+        CMTIME_COMPARE_INLINE(_lastVideoDisplayTimestamp, >, currentTimestamp) ||
+        CMTIME_COMPARE_INLINE(CMTimeSubtract(currentTimestamp, _lastVideoDisplayTimestamp), >, _minDisplayDuration))
+    {
+        // determine rect for drawing by center cropping source rect based on preview aspect ratio
+        CGSize previewSize = _filteredPreviewView.layer.frame.size;
+        CGFloat previewAspect = (previewSize.width  / previewSize.height);
+        CGRect drawRect = [self centerCropRect:sourceExtent toAspectRatio:previewAspect];
         
+        // draw the regular preview view (taking screen scale into consideration)
         [EAGLContext setCurrentContext:_context];
-        
         [_filteredPreviewView bindDrawable];
-        
-    //    // clear eagl view to grey
-    //    glClearColor(1.0, 0.0, 0.0, 1.0);
-    //    glClear(GL_COLOR_BUFFER_BIT);
-    //    
-    //    // set the blend mode to "source over" so that CI will use that
-    //    glEnable(GL_BLEND);
-    //    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-        
-        // draw the preview view (taking screen scale into consideration)
         CGRect previewBounds = CGRectMake(0, 0, previewSize.width, previewSize.height);
         previewBounds.size.width *= _screenScale;
         previewBounds.size.height *= _screenScale;
         [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
         [_filteredPreviewView display];
         
-        ////////////////////////
-        
+        // draw the small preview view (taking screen scale into consideration)
         [EAGLContext setCurrentContext:_contextPreview];
-
         [_filteredSmallPreviewView bindDrawable];
-        
-    //    // clear eagl view to grey
-    //    glClearColor(1.0, 0.0, 0.0, 1.0);
-    //    glClear(GL_COLOR_BUFFER_BIT);
-    //    
-    //    // set the blend mode to "source over" so that CI will use that
-    //    glEnable(GL_BLEND);
-    //    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-        
         CGSize smallPreviewSize = _filteredSmallPreviewView.layer.frame.size;
         CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
         smallPreviewBounds.size.width *= _screenScale;
@@ -2722,104 +2651,53 @@ typedef void (^PBJVisionBlock)();
         [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
         [_filteredSmallPreviewView display];
         
-        ////////////////////////
-        
         _lastVideoDisplayTimestamp = currentTimestamp;
         
-//        [self calculateFramerateAtTimestamp:currentTimestamp];
-//        NSLog(@"fps: %f", _frameRate);
+        //[self calculateFramerateAtTimestamp:currentTimestamp];
+        //NSLog(@"fps: %f", _frameRate);
     }
     
-    CIImage* cropImage = [image imageByCroppingToRect:drawRect];
-    cropImage = [cropImage imageByApplyingTransform:CGAffineTransformMakeTranslation(0, -drawRect.origin.y)];
+    // center crop the source image to a square for video output
+    CGRect squareRect = [self centerCropRect:sourceExtent toAspectRatio:1.0f];
+    CIImage *cropImage = [image imageByCroppingToRect:squareRect];
+    cropImage = [cropImage imageByApplyingTransform:CGAffineTransformMakeTranslation(-squareRect.origin.x,
+                                                                                     -squareRect.origin.y)];
+    
+    // render the filtered, square, center cropped image back to the outup video
     CVPixelBufferRef renderedOutputPixelBuffer = NULL;
-    if (_mediaWriter.videoReady) {
+    if ( _mediaWriter.videoReady ) {
         CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
-        if (!err && renderedOutputPixelBuffer)
-        {
-            [EAGLContext setCurrentContext:_context];
-            
-            // render the filtered image back to the pixel buffer (no locking needed as CIContext's render method will do that
-            //[_ciContext render:image toCVPixelBuffer:renderedOutputPixelBuffer bounds:[image extent] colorSpace:sDeviceRgbColorSpace];
+        if ( !err && renderedOutputPixelBuffer ) {
             [_ciContext render:cropImage toCVPixelBuffer:renderedOutputPixelBuffer];
         }
-        CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
     }
     
-    return renderedOutputPixelBuffer;
+    // we are done with image buffer so unlock it before returning
+    CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
     
-//    [self _cleanUpTextures];
-//
-//    size_t width = CVPixelBufferGetWidth(imageBuffer);
-//    size_t height = CVPixelBufferGetHeight(imageBuffer);
-//
-//    // only bind the vertices once or if parameters change
-//    
-//    if (_bufferWidth != width ||
-//        _bufferHeight != height ||
-//        _bufferDevice != _cameraDevice ||
-//        _bufferOrientation != _cameraOrientation) {
-//        
-//        _bufferWidth = width;
-//        _bufferHeight = height;
-//        _bufferDevice = _cameraDevice;
-//        _bufferOrientation = _cameraOrientation;
-//        [self _setupBuffers];
-//        
-//    }
-//    
-//    // always upload the texturs since the input may be changing
-//    
-//    CVReturn error = 0;
-//    
-//    // Y-plane
-//    glActiveTexture(GL_TEXTURE0);
-//    error = CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
-//                                                        _videoTextureCache,
-//                                                        imageBuffer,
-//                                                        NULL,
-//                                                        GL_TEXTURE_2D,
-//                                                        GL_RED_EXT,
-//                                                        (GLsizei)_bufferWidth,
-//                                                        (GLsizei)_bufferHeight,
-//                                                        GL_RED_EXT,
-//                                                        GL_UNSIGNED_BYTE,
-//                                                        0,
-//                                                        &_lumaTexture);
-//    if (error) {
-//        DLog(@"error CVOpenGLESTextureCacheCreateTextureFromImage (%d)", error);
-//    }
-//    
-//    glBindTexture(CVOpenGLESTextureGetTarget(_lumaTexture), CVOpenGLESTextureGetName(_lumaTexture));
-//	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-//	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); 
-//    
-//    // UV-plane
-//    glActiveTexture(GL_TEXTURE1);
-//    error = CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault,
-//                                                         _videoTextureCache,
-//                                                         imageBuffer,
-//                                                         NULL,
-//                                                         GL_TEXTURE_2D,
-//                                                         GL_RG_EXT,
-//                                                         (GLsizei)(_bufferWidth * 0.5),
-//                                                         (GLsizei)(_bufferHeight * 0.5),
-//                                                         GL_RG_EXT,
-//                                                         GL_UNSIGNED_BYTE,
-//                                                         1,
-//                                                         &_chromaTexture);
-//    if (error) {
-//        DLog(@"error CVOpenGLESTextureCacheCreateTextureFromImage (%d)", error);
-//    }
-//    
-//    glBindTexture(CVOpenGLESTextureGetTarget(_chromaTexture), CVOpenGLESTextureGetName(_chromaTexture));
-//	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-//	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-//    
-//    if (CVPixelBufferUnlockBaseAddress(imageBuffer, 0) != kCVReturnSuccess)
-//        return;
-//
-//    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    return renderedOutputPixelBuffer;
+}
+
+- (CGRect)centerCropRect:(CGRect)sourceRect toAspectRatio:(CGFloat)newAspectRatio
+{
+    CGFloat sourceAspect = (sourceRect.size.width / sourceRect.size.height);
+    
+    // determine cropped rect based on comparison to new aspect ratio
+    CGRect croppedRect = sourceRect;
+    if ( sourceAspect > newAspectRatio )
+    {
+        // use full height of the video image, and center crop the width
+        croppedRect.size.width = (croppedRect.size.height * newAspectRatio);
+        croppedRect.origin.x = (sourceRect.size.width - croppedRect.size.width) * 0.5f;
+    }
+    else
+    {
+        // use full width of the video image, and center crop the height
+        croppedRect.size.height = (croppedRect.size.width / newAspectRatio);
+        croppedRect.origin.y = (sourceRect.size.height - croppedRect.size.height) * 0.5f;
+    }
+    
+    return croppedRect;
 }
 
 - (void)_cleanUpTextures
