@@ -125,7 +125,7 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 @property (nonatomic, weak) id<PBJVisionDelegate> delegate;
 
-@property (nonatomic, weak) id<PBJVisionFilterDelegate> filterDelegate;
+@property (nonatomic, weak) NSObject<PBJVisionFilterDelegate> *filterDelegate;
 
 // session
 
@@ -303,6 +303,6 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 @protocol PBJVisionFilterDelegate
 
-- (void)visionDidOutputSamples:(CVPixelBufferRef)pixelBuffer;
+- (void)visionDidOutputImage:(CIImage*)image;
 
 @end

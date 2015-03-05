@@ -2735,6 +2735,11 @@ typedef void (^PBJVisionBlock)();
         
     }
     
+    if ([_filterDelegate respondsToSelector:@selector(visionDidOutputImage:)])
+    {
+        [_filterDelegate visionDidOutputImage:image];
+    }
+    
     CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     if (CMTIME_IS_INVALID(_lastVideoDisplayTimestamp) || CMTIME_COMPARE_INLINE(_lastVideoDisplayTimestamp, >, currentTimestamp) || CMTIME_COMPARE_INLINE(CMTimeSubtract(currentTimestamp, _lastVideoDisplayTimestamp), >, _minDisplayDuration)) {
         
