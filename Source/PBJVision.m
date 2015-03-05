@@ -2049,6 +2049,11 @@ typedef void (^PBJVisionBlock)();
             videoDimensions.height = (int32_t)(dimensions.width * 3 / 4.0f);
             break;
         }
+        case PBJOutputFormat360x360:
+        {
+            videoDimensions.width = 360.0f;
+            videoDimensions.height = 360.0f;
+        }
         case PBJOutputFormatPreset:
         default:
             break;
@@ -2660,8 +2665,22 @@ typedef void (^PBJVisionBlock)();
     // center crop the source image to a square for video output
     CGRect squareRect = [self centerCropRect:sourceExtent toAspectRatio:1.0f];
     CIImage *cropImage = [image imageByCroppingToRect:squareRect];
-    cropImage = [cropImage imageByApplyingTransform:CGAffineTransformMakeTranslation(-squareRect.origin.x,
-                                                                                     -squareRect.origin.y)];
+    
+    // deterine the scale and amount video should be moved over to fit the video output dimensions
+    float scale = 1.0f;
+    float xTrans = -squareRect.origin.x;
+    float yTrans = -squareRect.origin.y;
+    if ( _outputFormat == PBJOutputFormat360x360 ) {
+        scale = (360.0f / squareRect.size.width);
+        xTrans *= scale;
+        yTrans *= scale;
+    }
+    
+    // apply transform to make final image fit perfect in output video dimensions
+    if ( scale != 1.0f ) {
+        cropImage = [image imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
+    }
+    cropImage = [cropImage imageByApplyingTransform:CGAffineTransformMakeTranslation(xTrans, yTrans)];
     
     // render the filtered, square, center cropped image back to the outup video
     CVPixelBufferRef renderedOutputPixelBuffer = NULL;
