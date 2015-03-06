@@ -196,7 +196,18 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 @property (nonatomic) AVCaptureDevice *currentDevice;
 
+@property (nonatomic, strong) CIFilter *filter1;
+@property (nonatomic, strong) CIFilter *filter2;
+@property (nonatomic, readwrite) CGFloat filterLeftPercent;
+
+@property (nonatomic, strong) CIFilter *frostedFilter;
+@property (nonatomic, readwrite) BOOL frostedTopEnabled;
+@property (nonatomic, readwrite) BOOL frostedBottomEnabled;
+@property (nonatomic, readwrite) CGFloat frostedTopHeight;
+@property (nonatomic, readwrite) CGFloat frostedBottomHeight;
+
 @end
+
 
 @implementation PBJVision
 
@@ -754,7 +765,14 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         _ciContext = [CIContext contextWithEAGLContext:_context options:options];
         _ciContextPreview = [CIContext contextWithEAGLContext:_contextPreview options:options];
         
-        _filter = [CIFilter filterWithName:@"CIPhotoEffectChrome"];
+        // enabled default filter
+        CIFilter *filter = [CIFilter filterWithName:@"CIPhotoEffectChrome"];
+        [self enableFilter:filter];
+        
+        // create blur filter for frosted glass rendering but disable for default
+        self.frostedFilter = [CIFilter filterWithName:@"CIGaussianBlur"];
+        [self.frostedFilter setValue:@(32) forKey:kCIInputRadiusKey];
+        [self disableFrostedGlass];
         
         // set default capture preset
         _captureSessionPreset = AVCaptureSessionPresetMedium;
@@ -925,15 +943,6 @@ typedef void (^PBJVisionBlock)();
 
     // capture device initial settings
     _videoFrameRate = 30;
-    
-    self.filteringEnabled = NO;
-    NSString *currentHardware = [PBJVision hardwareString];
-    for (NSString *device in @[@"iPhone6", @"iPhone7"]) {
-        if ([currentHardware hasPrefix:device]) {
-            self.filteringEnabled = YES;
-            break;
-        }
-    }
     
     // when drawing the preview we need to scale it by screen scale to handle correct
     // pixel density. iphone 6+ has a different density than any other device, and it's
@@ -2619,32 +2628,110 @@ typedef void (^PBJVisionBlock)();
         image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
     }
     
-    // apply filter
-    if (_filter && _filteringEnabled)
-    {
-        [_filter setValue:image forKey:kCIInputImageKey];
-        image = _filter.outputImage;
-    }
-    
     // draw filtered image into preview view if enough time has past since last drawing
     CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     if (CMTIME_IS_INVALID(_lastVideoDisplayTimestamp) ||
         CMTIME_COMPARE_INLINE(_lastVideoDisplayTimestamp, >, currentTimestamp) ||
         CMTIME_COMPARE_INLINE(CMTimeSubtract(currentTimestamp, _lastVideoDisplayTimestamp), >, _minDisplayDuration))
     {
-        // determine rect for drawing by center cropping source rect based on preview aspect ratio
+        // apply filter1 if enabled
+        CIImage *filter1Image = nil;
+        if ( self.filter1 )
+        {
+            [self.filter1 setValue:image forKey:kCIInputImageKey];
+            filter1Image = self.filter1.outputImage;
+        }
+        
+        // apply filter2 if enabled
+        CIImage *filter2Image = nil;
+        if ( self.filter2 )
+        {
+            [self.filter2 setValue:image forKey:kCIInputImageKey];
+            filter2Image = self.filter2.outputImage;
+        }
+        
+        // apply frosted glass filter if enabled
+        CIImage *frostedImage = nil;
+        if ( self.frostedTopEnabled || self.frostedBottomEnabled )
+        {
+            [self.frostedFilter setValue:image forKey:kCIInputImageKey];
+            frostedImage = self.frostedFilter.outputImage;
+        }
+        
+        // determine rect for full size preview (need to take screen scale into account
         CGSize previewSize = _filteredPreviewView.layer.frame.size;
+        CGRect previewRect = CGRectMake(0, 0, previewSize.width, previewSize.height);
+        previewRect.size.width *= _screenScale;
+        previewRect.size.height *= _screenScale;
+        
+        // determine rect for drawing image into preview by center cropping source rect based on preview aspect ratio
         CGFloat previewAspect = (previewSize.width  / previewSize.height);
         CGRect drawRect = [self centerCropRect:sourceExtent toAspectRatio:previewAspect];
         
-        // draw the regular preview view (taking screen scale into consideration)
+        // get ready to draw
         [EAGLContext setCurrentContext:_context];
         [_filteredPreviewView bindDrawable];
-        CGRect previewBounds = CGRectMake(0, 0, previewSize.width, previewSize.height);
-        previewBounds.size.width *= _screenScale;
-        previewBounds.size.height *= _screenScale;
-        [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
+        
+        // first, draw filterd images
+        if ( filter2Image )
+        {
+            // determine left and right rects for drawing two filters
+            CGFloat leftWidth = (previewRect.size.width * self.filterLeftPercent);
+            CGFloat rightWidth = previewRect.size.width - leftWidth;
+            CGRect leftPreviewRect = previewRect;
+            leftPreviewRect.size.width = leftWidth;
+            CGRect rightPreviewRect = previewRect;
+            rightPreviewRect.origin.x = previewRect.origin.x + leftWidth;
+            rightPreviewRect.size.width = rightWidth;
+            
+            leftWidth = (drawRect.size.width * self.filterLeftPercent);
+            rightWidth = drawRect.size.width - leftWidth;
+            CGRect leftDrawRect = drawRect;
+            leftDrawRect.size.width = leftWidth;
+            CGRect rightDrawRect = drawRect;
+            rightDrawRect.origin.x = drawRect.origin.x + leftWidth;
+            rightDrawRect.size.width = rightWidth;
+            
+            // draw filter1 OR unfilted on the left, and filter2 on the right
+            [_ciContext drawImage:(filter1Image ?: image) inRect:leftPreviewRect fromRect:leftDrawRect];
+            [_ciContext drawImage:filter2Image inRect:rightPreviewRect fromRect:rightDrawRect];
+        }
+        else
+        {
+            // we do not have filter2 image, so draw filter1 OR unfiltered image into full preview
+            [_ciContext drawImage:(filter1Image ?: image) inRect:previewRect fromRect:drawRect];
+        }
+        
+        // draw frosted glass on top and/or bottom if enabled
+        if ( frostedImage )
+        {
+            // determine top and bottom rects for drawing frosted glass
+            CGFloat topHeight = (self.frostedTopHeight * _screenScale);
+            CGFloat bottomHeight = (self.frostedBottomHeight * _screenScale);
+            
+            CGRect topPreviewRect = previewRect;
+            topPreviewRect.origin.y = previewRect.origin.y + previewRect.size.height - topHeight;
+            topPreviewRect.size.height = topHeight;
+            CGRect topDrawRect = drawRect;
+            topDrawRect.origin.y = drawRect.origin.y + drawRect.size.height - topHeight;
+            topDrawRect.size.height = topHeight;
+            
+            CGRect bottomPreviewRect = previewRect;
+            bottomPreviewRect.size.height = bottomHeight;
+            CGRect bottomDrawRect = drawRect;
+            bottomDrawRect.size.height = bottomHeight;
+            
+            if ( self.frostedTopEnabled ) {
+                [_ciContext drawImage:frostedImage inRect:topPreviewRect fromRect:topDrawRect];
+            }
+            if ( self.frostedBottomEnabled ) {
+                [_ciContext drawImage:frostedImage inRect:bottomPreviewRect fromRect:bottomDrawRect];
+            }
+        }
+        
+        // commit drawing
         [_filteredPreviewView display];
+        
         
         // draw the small preview view (taking screen scale into consideration)
         [EAGLContext setCurrentContext:_contextPreview];
@@ -2655,6 +2742,7 @@ typedef void (^PBJVisionBlock)();
         smallPreviewBounds.size.height *= _screenScale;
         [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
         [_filteredSmallPreviewView display];
+        
         
         _lastVideoDisplayTimestamp = currentTimestamp;
         
@@ -2826,6 +2914,55 @@ typedef void (^PBJVisionBlock)();
     if ([EAGLContext currentContext] == _context) {
         [EAGLContext setCurrentContext:nil];
     }
+}
+
+#pragma mark - Filter effects
+
+- (void)disableFilters
+{
+    self.filter1 = nil;
+    self.filter2 = nil;
+}
+
+- (void)enableFilter:(CIFilter *)filter
+{
+    self.filter1 = filter;
+    self.filter2 = nil;
+}
+
+- (void)enableFilter1:(CIFilter *)filter1 filter2:(CIFilter *)filter2 leftPercent:(CGFloat)leftPercent;
+{
+    self.filter1 = filter1;
+    self.filter2 = filter2;
+    
+    self.filterLeftPercent = leftPercent;
+    if ( self.filterLeftPercent < 0.0f ) {
+        self.filterLeftPercent = 0.0f;
+    }
+    if ( self.filterLeftPercent > 1.0f ) {
+        self.filterLeftPercent = 1.0f;
+    }
+}
+
+- (void)disableFrostedGlass
+{
+    self.frostedTopEnabled = NO;
+    self.frostedBottomEnabled = NO;
+}
+
+- (void)enableFrostedGlassOnTop:(CGFloat)topHeight
+{
+    self.frostedTopEnabled = YES;
+    self.frostedBottomEnabled = NO;
+    self.frostedTopHeight = topHeight;
+}
+
+- (void)enableFrostedGlassOnTop:(CGFloat)topHeight andBottom:(CGFloat)bottomHeight
+{
+    self.frostedTopEnabled = YES;
+    self.frostedBottomEnabled = YES;
+    self.frostedTopHeight = topHeight;
+    self.frostedBottomHeight = bottomHeight;
 }
 
 @end

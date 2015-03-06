@@ -163,7 +163,6 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 @property (nonatomic, readonly) GLKView *filteredPreviewView;
 @property (nonatomic, readonly) GLKView *filteredSmallPreviewView;
-@property (nonatomic) CIFilter *filter;
 
 - (void)startPreview;
 - (void)stopPreview;
@@ -201,7 +200,6 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 @property (nonatomic, getter=isVideoRenderingEnabled) BOOL videoRenderingEnabled;
 @property (nonatomic, getter=isAudioCaptureEnabled) BOOL audioCaptureEnabled;
-@property (nonatomic) BOOL filteringEnabled;
 @property (nonatomic) CGFloat screenScale; 
 
 @property (nonatomic, readonly) EAGLContext *context;
@@ -223,7 +221,28 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 - (void)cancelVideoCapture;
 - (void)setPreviewFrameRate:(int)frameRate;
 
+/*** FILTER EFFECTS ***/
+
+// disable all filters
+- (void)disableFilters;
+
+// enable a single filter that will be applied to the whole image
+- (void)enableFilter:(CIFilter *)filter;
+
+// enable 2 filters (left and right) with left one taking up leftPercent (range [0-1]) of the preview
+- (void)enableFilter1:(CIFilter *)filter1 filter2:(CIFilter *)filter2 leftPercent:(CGFloat)leftPercent;
+
+// disable frosted glass effects entirely
+- (void)disableFrostedGlass;
+
+// enable frosted glass effect only on top with desired height from top
+- (void)enableFrostedGlassOnTop:(CGFloat)topHeight;
+
+// enable frosted glass effect on top and bottom with desired heights from top and bottom respectively
+- (void)enableFrostedGlassOnTop:(CGFloat)topHeight andBottom:(CGFloat)bottomHeight;
+
 @end
+
 
 @protocol PBJVisionDelegate <NSObject>
 @optional
