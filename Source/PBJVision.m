@@ -27,6 +27,8 @@
 #import "PBJVisionUtilities.h"
 #import "PBJMediaWriter.h"
 #import "PBJGLProgram.h"
+#import "SplitFilter.h"
+#import "VideoFilterManager.h"
 
 #import <ImageIO/ImageIO.h>
 #import <OpenGLES/EAGL.h>
@@ -196,6 +198,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 @property (nonatomic) AVCaptureDevice *currentDevice;
 
+@property (nonatomic, strong) SplitFilter *splitFilter;
 @property (nonatomic, strong) CIFilter *filter1;
 @property (nonatomic, strong) CIFilter *filter2;
 @property (nonatomic, readwrite) CGFloat filterLeftPercent;
@@ -764,10 +767,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         NSDictionary *options = @{ (id)kCIContextWorkingColorSpace : (id)kCFNull };
         _ciContext = [CIContext contextWithEAGLContext:_context options:options];
         _ciContextPreview = [CIContext contextWithEAGLContext:_contextPreview options:options];
-        
-        // enabled default filter
-        CIFilter *filter = [CIFilter filterWithName:@"CIPhotoEffectChrome"];
-        [self enableFilter:filter];
         
         // create blur filter for frosted glass rendering but disable for default
         self.frostedFilter = [CIFilter filterWithName:@"CIGaussianBlur"];
@@ -2634,21 +2633,22 @@ typedef void (^PBJVisionBlock)();
         CMTIME_COMPARE_INLINE(_lastVideoDisplayTimestamp, >, currentTimestamp) ||
         CMTIME_COMPARE_INLINE(CMTimeSubtract(currentTimestamp, _lastVideoDisplayTimestamp), >, _minDisplayDuration))
     {
-        // apply filter1 if enabled
-        CIImage *filter1Image = nil;
-        if ( self.filter1 )
-        {
-            [self.filter1 setValue:image forKey:kCIInputImageKey];
-            filter1Image = self.filter1.outputImage;
-        }
         
-        // apply filter2 if enabled
-        CIImage *filter2Image = nil;
-        if ( self.filter2 )
-        {
-            [self.filter2 setValue:image forKey:kCIInputImageKey];
-            filter2Image = self.filter2.outputImage;
-        }
+        CIImage *filter1Image = [VideoFilterManager filterImage:image withFilterIndex:floorf(self.filterOffset)];
+        CIImage *filter2Image = [VideoFilterManager filterImage:image withFilterIndex:ceilf(self.filterOffset)];
+        
+        CGFloat leftPerc = (self.filterOffset < 1) ? self.filterOffset : self.filterOffset - (truncf(self.filterOffset));
+        
+        // Split filter with CIKernel
+//        CIImage *filteredImage = [image copy];
+//        if(!self.splitFilter)
+//        {
+//            self.splitFilter = [[SplitFilter alloc] init];
+//        }
+//        [self.splitFilter setLeft:filter1Image];
+//        [self.splitFilter setRight:filter2Image];
+//        [self.splitFilter setOffset:leftPerc];
+//        filteredImage = [self.splitFilter outputImage];
         
         // apply frosted glass filter if enabled
         CIImage *frostedImage = nil;
@@ -2672,20 +2672,20 @@ typedef void (^PBJVisionBlock)();
         [EAGLContext setCurrentContext:_context];
         [_filteredPreviewView bindDrawable];
         
-        // first, draw filterd images
+         //first, draw filterd images
         if ( filter2Image )
         {
             // determine left and right rects for drawing two filters
-            CGFloat leftWidth = (previewRect.size.width * self.filterLeftPercent);
-            CGFloat rightWidth = previewRect.size.width - leftWidth;
+            CGFloat rightWidth = (previewRect.size.width * leftPerc);
+            CGFloat leftWidth = previewRect.size.width - rightWidth;
             CGRect leftPreviewRect = previewRect;
             leftPreviewRect.size.width = leftWidth;
             CGRect rightPreviewRect = previewRect;
             rightPreviewRect.origin.x = previewRect.origin.x + leftWidth;
             rightPreviewRect.size.width = rightWidth;
             
-            leftWidth = (drawRect.size.width * self.filterLeftPercent);
-            rightWidth = drawRect.size.width - leftWidth;
+            rightWidth = (drawRect.size.width * leftPerc);
+            leftWidth = drawRect.size.width - rightWidth;
             CGRect leftDrawRect = drawRect;
             leftDrawRect.size.width = leftWidth;
             CGRect rightDrawRect = drawRect;
@@ -2701,6 +2701,9 @@ typedef void (^PBJVisionBlock)();
             // we do not have filter2 image, so draw filter1 OR unfiltered image into full preview
             [_ciContext drawImage:(filter1Image ?: image) inRect:previewRect fromRect:drawRect];
         }
+        
+        // Draw CIKernel output
+        //[_ciContext drawImage:filteredImage ?: image inRect:previewRect fromRect:drawRect];
         
         // draw frosted glass on top and/or bottom if enabled
         if ( frostedImage )

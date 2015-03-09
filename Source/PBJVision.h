@@ -122,6 +122,9 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 + (PBJVision *)sharedInstance;
 
+// Swipe offset so we can get the correct filter
+@property CGFloat filterOffset;
+
 @property (nonatomic, weak) id<PBJVisionDelegate> delegate;
 
 // session
