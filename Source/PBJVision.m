@@ -199,9 +199,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @property (nonatomic) AVCaptureDevice *currentDevice;
 
 @property (nonatomic, strong) SplitFilter *splitFilter;
-@property (nonatomic, strong) CIFilter *filter1;
-@property (nonatomic, strong) CIFilter *filter2;
-@property (nonatomic, readwrite) CGFloat filterLeftPercent;
 
 @property (nonatomic, strong) CIFilter *frostedFilter;
 @property (nonatomic, readwrite) BOOL frostedTopEnabled;
@@ -770,7 +767,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         
         // create blur filter for frosted glass rendering but disable for default
         self.frostedFilter = [CIFilter filterWithName:@"CIGaussianBlur"];
-        [self.frostedFilter setValue:@(32) forKey:kCIInputRadiusKey];
+        [self.frostedFilter setValue:@(24) forKey:kCIInputRadiusKey];
         [self disableFrostedGlass];
         
         // set default capture preset
@@ -2579,25 +2576,22 @@ typedef void (^PBJVisionBlock)();
 
 - (void)clearPreviewView
 {
+    // clear main preview
     [EAGLContext setCurrentContext:_context];
-
     [_filteredPreviewView bindDrawable];
-    
     glClearColor(0.0, 0.0, 0.0, 1.0);
     glClear(GL_COLOR_BUFFER_BIT);
-    
     [_filteredPreviewView display];
     
-    /////////////
-    
-    [EAGLContext setCurrentContext:_contextPreview];
-    
-    [_filteredSmallPreviewView bindDrawable];
-    
-    glClearColor(0.0, 0.0, 0.0, 1.0);
-    glClear(GL_COLOR_BUFFER_BIT);
-    
-    [_filteredSmallPreviewView display];
+    // clear small preview if it is enabled
+    if ( self.smallPreviewEnabled )
+    {
+        [EAGLContext setCurrentContext:_contextPreview];
+        [_filteredSmallPreviewView bindDrawable];
+        glClearColor(0.0, 0.0, 0.0, 1.0);
+        glClear(GL_COLOR_BUFFER_BIT);
+        [_filteredSmallPreviewView display];
+    }
 }
 
 // convert CoreVideo YUV pixel buffer (Y luminance and Cb Cr chroma) into RGB
@@ -2711,16 +2705,17 @@ typedef void (^PBJVisionBlock)();
             // determine top and bottom rects for drawing frosted glass
             CGFloat topHeight = (self.frostedTopHeight * _screenScale);
             CGFloat bottomHeight = (self.frostedBottomHeight * _screenScale);
-            
             CGRect topPreviewRect = previewRect;
             topPreviewRect.origin.y = previewRect.origin.y + previewRect.size.height - topHeight;
             topPreviewRect.size.height = topHeight;
+            CGRect bottomPreviewRect = previewRect;
+            bottomPreviewRect.size.height = bottomHeight;
+            
+            topHeight = (topHeight / previewRect.size.height) * drawRect.size.height;
+            bottomHeight = (bottomHeight / previewRect.size.height) * drawRect.size.height;
             CGRect topDrawRect = drawRect;
             topDrawRect.origin.y = drawRect.origin.y + drawRect.size.height - topHeight;
             topDrawRect.size.height = topHeight;
-            
-            CGRect bottomPreviewRect = previewRect;
-            bottomPreviewRect.size.height = bottomHeight;
             CGRect bottomDrawRect = drawRect;
             bottomDrawRect.size.height = bottomHeight;
             
@@ -2735,17 +2730,18 @@ typedef void (^PBJVisionBlock)();
         // commit drawing
         [_filteredPreviewView display];
         
-        
-        // draw the small preview view (taking screen scale into consideration)
-        [EAGLContext setCurrentContext:_contextPreview];
-        [_filteredSmallPreviewView bindDrawable];
-        CGSize smallPreviewSize = _filteredSmallPreviewView.layer.frame.size;
-        CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
-        smallPreviewBounds.size.width *= _screenScale;
-        smallPreviewBounds.size.height *= _screenScale;
-        [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
-        [_filteredSmallPreviewView display];
-        
+        // draw the small preview view if enabled (taking screen scale into consideration)
+        if ( self.smallPreviewEnabled )
+        {
+            [EAGLContext setCurrentContext:_contextPreview];
+            [_filteredSmallPreviewView bindDrawable];
+            CGSize smallPreviewSize = _filteredSmallPreviewView.layer.frame.size;
+            CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
+            smallPreviewBounds.size.width *= _screenScale;
+            smallPreviewBounds.size.height *= _screenScale;
+            [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
+            [_filteredSmallPreviewView display];
+        }
         
         _lastVideoDisplayTimestamp = currentTimestamp;
         
@@ -2920,32 +2916,6 @@ typedef void (^PBJVisionBlock)();
 }
 
 #pragma mark - Filter effects
-
-- (void)disableFilters
-{
-    self.filter1 = nil;
-    self.filter2 = nil;
-}
-
-- (void)enableFilter:(CIFilter *)filter
-{
-    self.filter1 = filter;
-    self.filter2 = nil;
-}
-
-- (void)enableFilter1:(CIFilter *)filter1 filter2:(CIFilter *)filter2 leftPercent:(CGFloat)leftPercent;
-{
-    self.filter1 = filter1;
-    self.filter2 = filter2;
-    
-    self.filterLeftPercent = leftPercent;
-    if ( self.filterLeftPercent < 0.0f ) {
-        self.filterLeftPercent = 0.0f;
-    }
-    if ( self.filterLeftPercent > 1.0f ) {
-        self.filterLeftPercent = 1.0f;
-    }
-}
 
 - (void)disableFrostedGlass
 {
