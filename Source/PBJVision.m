@@ -200,12 +200,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 @property (nonatomic, strong) SplitFilter *splitFilter;
 
-@property (nonatomic, strong) CIFilter *frostedFilter;
-@property (nonatomic, readwrite) BOOL frostedTopEnabled;
-@property (nonatomic, readwrite) BOOL frostedBottomEnabled;
-@property (nonatomic, readwrite) CGFloat frostedTopHeight;
-@property (nonatomic, readwrite) CGFloat frostedBottomHeight;
-
 @end
 
 
@@ -764,11 +758,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         NSDictionary *options = @{ (id)kCIContextWorkingColorSpace : (id)kCFNull };
         _ciContext = [CIContext contextWithEAGLContext:_context options:options];
         _ciContextPreview = [CIContext contextWithEAGLContext:_contextPreview options:options];
-        
-        // create blur filter for frosted glass rendering but disable for default
-        self.frostedFilter = [CIFilter filterWithName:@"CIGaussianBlur"];
-        [self.frostedFilter setValue:@(24) forKey:kCIInputRadiusKey];
-        [self disableFrostedGlass];
         
         // set default capture preset
         _captureSessionPreset = AVCaptureSessionPresetMedium;
@@ -2627,30 +2616,9 @@ typedef void (^PBJVisionBlock)();
         CMTIME_COMPARE_INLINE(_lastVideoDisplayTimestamp, >, currentTimestamp) ||
         CMTIME_COMPARE_INLINE(CMTimeSubtract(currentTimestamp, _lastVideoDisplayTimestamp), >, _minDisplayDuration))
     {
-        
+        // get two filtered images based on the filter offset
         CIImage *filter1Image = [VideoFilterManager filterImage:image withFilterIndex:floorf(self.filterOffset)];
         CIImage *filter2Image = [VideoFilterManager filterImage:image withFilterIndex:ceilf(self.filterOffset)];
-        
-        CGFloat leftPerc = (self.filterOffset < 1) ? self.filterOffset : self.filterOffset - (truncf(self.filterOffset));
-        
-        // Split filter with CIKernel
-//        CIImage *filteredImage = [image copy];
-//        if(!self.splitFilter)
-//        {
-//            self.splitFilter = [[SplitFilter alloc] init];
-//        }
-//        [self.splitFilter setLeft:filter1Image];
-//        [self.splitFilter setRight:filter2Image];
-//        [self.splitFilter setOffset:leftPerc];
-//        filteredImage = [self.splitFilter outputImage];
-        
-        // apply frosted glass filter if enabled
-        CIImage *frostedImage = nil;
-        if ( self.frostedTopEnabled || self.frostedBottomEnabled )
-        {
-            [self.frostedFilter setValue:image forKey:kCIInputImageKey];
-            frostedImage = self.frostedFilter.outputImage;
-        }
         
         // determine rect for full size preview (need to take screen scale into account
         CGSize previewSize = _filteredPreviewView.layer.frame.size;
@@ -2669,6 +2637,9 @@ typedef void (^PBJVisionBlock)();
          //first, draw filterd images
         if ( filter2Image )
         {
+            CGFloat leftPerc = ((self.filterOffset < 1) ? self.filterOffset :
+                                self.filterOffset - (truncf(self.filterOffset)));
+            
             // determine left and right rects for drawing two filters
             CGFloat rightWidth = (previewRect.size.width * leftPerc);
             CGFloat leftWidth = previewRect.size.width - rightWidth;
@@ -2697,35 +2668,15 @@ typedef void (^PBJVisionBlock)();
         }
         
         // Draw CIKernel output
-        //[_ciContext drawImage:filteredImage ?: image inRect:previewRect fromRect:drawRect];
-        
-        // draw frosted glass on top and/or bottom if enabled
-        if ( frostedImage )
-        {
-            // determine top and bottom rects for drawing frosted glass
-            CGFloat topHeight = (self.frostedTopHeight * _screenScale);
-            CGFloat bottomHeight = (self.frostedBottomHeight * _screenScale);
-            CGRect topPreviewRect = previewRect;
-            topPreviewRect.origin.y = previewRect.origin.y + previewRect.size.height - topHeight;
-            topPreviewRect.size.height = topHeight;
-            CGRect bottomPreviewRect = previewRect;
-            bottomPreviewRect.size.height = bottomHeight;
-            
-            topHeight = (topHeight / previewRect.size.height) * drawRect.size.height;
-            bottomHeight = (bottomHeight / previewRect.size.height) * drawRect.size.height;
-            CGRect topDrawRect = drawRect;
-            topDrawRect.origin.y = drawRect.origin.y + drawRect.size.height - topHeight;
-            topDrawRect.size.height = topHeight;
-            CGRect bottomDrawRect = drawRect;
-            bottomDrawRect.size.height = bottomHeight;
-            
-            if ( self.frostedTopEnabled ) {
-                [_ciContext drawImage:frostedImage inRect:topPreviewRect fromRect:topDrawRect];
-            }
-            if ( self.frostedBottomEnabled ) {
-                [_ciContext drawImage:frostedImage inRect:bottomPreviewRect fromRect:bottomDrawRect];
-            }
-        }
+//        CIImage *filteredImage = [image copy];
+//        if (!self.splitFilter) {
+//            self.splitFilter = [[SplitFilter alloc] init];
+//        }
+//        [self.splitFilter setLeft:filter1Image];
+//        [self.splitFilter setRight:filter2Image];
+//        [self.splitFilter setOffset:leftPerc];
+//        filteredImage = [self.splitFilter outputImage];
+//        [_ciContext drawImage:filteredImage ?: image inRect:previewRect fromRect:drawRect];
         
         // commit drawing
         [_filteredPreviewView display];
@@ -2913,29 +2864,6 @@ typedef void (^PBJVisionBlock)();
     if ([EAGLContext currentContext] == _context) {
         [EAGLContext setCurrentContext:nil];
     }
-}
-
-#pragma mark - Filter effects
-
-- (void)disableFrostedGlass
-{
-    self.frostedTopEnabled = NO;
-    self.frostedBottomEnabled = NO;
-}
-
-- (void)enableFrostedGlassOnTop:(CGFloat)topHeight
-{
-    self.frostedTopEnabled = YES;
-    self.frostedBottomEnabled = NO;
-    self.frostedTopHeight = topHeight;
-}
-
-- (void)enableFrostedGlassOnTop:(CGFloat)topHeight andBottom:(CGFloat)bottomHeight
-{
-    self.frostedTopEnabled = YES;
-    self.frostedBottomEnabled = YES;
-    self.frostedTopHeight = topHeight;
-    self.frostedBottomHeight = bottomHeight;
 }
 
 @end

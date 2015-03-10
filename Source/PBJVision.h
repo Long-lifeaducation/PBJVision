@@ -225,17 +225,6 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 - (void)cancelVideoCapture;
 - (void)setPreviewFrameRate:(int)frameRate;
 
-/*** Frosted Glass Effects ***/
-
-// disable frosted glass effects entirely
-- (void)disableFrostedGlass;
-
-// enable frosted glass effect only on top with desired height from top
-- (void)enableFrostedGlassOnTop:(CGFloat)topHeight;
-
-// enable frosted glass effect on top and bottom with desired heights from top and bottom respectively
-- (void)enableFrostedGlassOnTop:(CGFloat)topHeight andBottom:(CGFloat)bottomHeight;
-
 @end
 
 
