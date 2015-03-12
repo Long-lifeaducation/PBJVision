@@ -2616,9 +2616,28 @@ typedef void (^PBJVisionBlock)();
         CMTIME_COMPARE_INLINE(_lastVideoDisplayTimestamp, >, currentTimestamp) ||
         CMTIME_COMPARE_INLINE(CMTimeSubtract(currentTimestamp, _lastVideoDisplayTimestamp), >, _minDisplayDuration))
     {
-        // get two filtered images based on the filter offset
-        CIImage *filter1Image = [VideoFilterManager filterImage:image withFilterIndex:floorf(self.filterOffset)];
-        CIImage *filter2Image = [VideoFilterManager filterImage:image withFilterIndex:ceilf(self.filterOffset)];
+        // determine the percentage between the two active filters
+        CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
+                                 self.filterOffset - (truncf(self.filterOffset)));
+        
+        // get filtered images based on the filter percent
+        CIImage *filter1Image = nil;
+        CIImage *filter2Image = nil;
+        if ( filterPercent <= 0.01 )
+        {
+            // percent is less than 1% (essentially 0) so only render one filtered image
+            filter1Image = [VideoFilterManager filterImage:image withFilterIndex:floorf(self.filterOffset)];
+        }
+        else if ( filterPercent >= 0.99 )
+        {
+            // percent is greater than 99% (essentially 100) so only render the other filtered image
+            filter1Image = [VideoFilterManager filterImage:image withFilterIndex:ceilf(self.filterOffset)];
+        }
+        else {
+            // percent is between 1% and 99% so we are transitioning between filters. render both
+            filter1Image = [VideoFilterManager filterImage:image withFilterIndex:floorf(self.filterOffset)];
+            filter2Image = [VideoFilterManager filterImage:image withFilterIndex:ceilf(self.filterOffset)];
+        }
         
         // determine rect for full size preview (need to take screen scale into account
         CGSize previewSize = _filteredPreviewView.layer.frame.size;
@@ -2637,11 +2656,8 @@ typedef void (^PBJVisionBlock)();
          //first, draw filterd images
         if ( filter2Image )
         {
-            CGFloat leftPerc = ((self.filterOffset < 1) ? self.filterOffset :
-                                self.filterOffset - (truncf(self.filterOffset)));
-            
             // determine left and right rects for drawing two filters
-            CGFloat rightWidth = (previewRect.size.width * leftPerc);
+            CGFloat rightWidth = (previewRect.size.width * filterPercent);
             CGFloat leftWidth = previewRect.size.width - rightWidth;
             CGRect leftPreviewRect = previewRect;
             leftPreviewRect.size.width = leftWidth;
@@ -2649,7 +2665,7 @@ typedef void (^PBJVisionBlock)();
             rightPreviewRect.origin.x = previewRect.origin.x + leftWidth;
             rightPreviewRect.size.width = rightWidth;
             
-            rightWidth = (drawRect.size.width * leftPerc);
+            rightWidth = (drawRect.size.width * filterPercent);
             leftWidth = drawRect.size.width - rightWidth;
             CGRect leftDrawRect = drawRect;
             leftDrawRect.size.width = leftWidth;
