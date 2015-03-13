@@ -39,6 +39,8 @@
 #import <client-magic/MagicLogger.h>
 #import <client-magic/UIDevice+Magic.h> 
 
+#import "GPUImage.h"
+
 #define LOG_VISION 1
 #ifndef DLog
 #if !defined(NDEBUG) && LOG_VISION
@@ -199,6 +201,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @property (nonatomic) AVCaptureDevice *currentDevice;
 
 @property (nonatomic, strong) SplitFilter *splitFilter;
+
+@property (nonatomic, strong) GPUImageRawDataInput *rawDataInput;
+@property (nonatomic, strong) GPUImageRawDataOutput *rawDataOutput;
 
 @end
 
@@ -2596,6 +2601,38 @@ typedef void (^PBJVisionBlock)();
     if (CVPixelBufferLockBaseAddress(imageBuffer, 0) != kCVReturnSuccess) {
         return NULL;
     }
+    
+    // GPUImage
+    size_t height = CVPixelBufferGetHeight(imageBuffer);
+    size_t width = CVPixelBufferGetWidth(imageBuffer);
+    size_t bytes = CVPixelBufferGetBytesPerRow(imageBuffer);
+    GLubyte *rawDataBytes = (GLubyte*)CVPixelBufferGetBaseAddress(imageBuffer);
+    
+    if(!_rawDataInput)
+    {
+        _rawDataInput = [[GPUImageRawDataInput alloc] initWithBytes:rawDataBytes size:CGSizeMake(360, 360) pixelFormat:GPUPixelFormatBGRA type:GPUPixelTypeUByte];
+        _rawDataOutput = [[GPUImageRawDataOutput alloc] initWithImageSize:CGSizeMake(360, 360) resultsInBGRAFormat:YES];
+        
+        [_rawDataInput addTarget:_rawDataOutput];
+        __unsafe_unretained GPUImageRawDataOutput * weakOutput = _rawDataOutput;
+        [_rawDataOutput setNewFrameAvailableBlock:^{
+            GLubyte *outputBytes = [weakOutput rawBytesForImage];
+            NSInteger bytesPerRow = [weakOutput bytesPerRowInOutput];
+            NSLog(@"Bytes per row: %ld", (long)bytesPerRow);
+            
+            CVPixelBufferRef pxbuffer = NULL;
+            NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:
+                                     [NSNumber numberWithBool:YES], kCVPixelBufferCGImageCompatibilityKey,
+                                     [NSNumber numberWithBool:YES], kCVPixelBufferCGBitmapContextCompatibilityKey,
+                                     nil];
+            CVPixelBufferCreateWithBytes(kCFAllocatorDefault,width,height,kCVPixelFormatType_32BGRA,outputBytes,bytesPerRow,NULL,NULL,(__bridge CFDictionaryRef)options,&pxbuffer);
+            
+            [weakOutput unlockFramebufferAfterReading];
+        }];
+    }
+    
+    [_rawDataInput updateDataFromBytes:rawDataBytes size:CGSizeMake(360, 360)];
+    [_rawDataInput processData];
     
     // convert this sample buffer into a CIImage (null colorspace to avoid colormatching)
     NSDictionary *options = @{ (id)kCIImageColorSpace : (id)kCFNull };
