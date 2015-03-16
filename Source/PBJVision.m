@@ -2618,7 +2618,7 @@ typedef void (^PBJVisionBlock)();
         [_rawDataOutput setNewFrameAvailableBlock:^{
             GLubyte *outputBytes = [weakOutput rawBytesForImage];
             NSInteger bytesPerRow = [weakOutput bytesPerRowInOutput];
-            NSLog(@"Bytes per row: %ld", (long)bytesPerRow);
+            //NSLog(@"Bytes per row: %ld", (long)bytesPerRow);
             
             CVPixelBufferRef pxbuffer = NULL;
             NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:
