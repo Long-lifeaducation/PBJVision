@@ -117,6 +117,7 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 @class EAGLContext;
 @class GLKView;
+@class GPUImageView;
 @protocol PBJVisionDelegate;
 @interface PBJVision : NSObject
 
@@ -164,8 +165,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 @property (nonatomic, readonly) AVCaptureVideoPreviewLayer *previewLayer;
 @property (nonatomic, readonly) CGRect cleanAperture;
 
-@property (nonatomic, readonly) GLKView *filteredPreviewView;
-@property (nonatomic, readonly) GLKView *filteredSmallPreviewView;
+@property (nonatomic, readonly) GPUImageView *filteredPreviewView;
+@property (nonatomic, readonly) GPUImageView *filteredSmallPreviewView;
 @property (nonatomic, readwrite) BOOL smallPreviewEnabled;
 
 - (void)startPreview;

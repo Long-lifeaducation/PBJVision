@@ -27,8 +27,8 @@
 #import "PBJVisionUtilities.h"
 #import "PBJMediaWriter.h"
 #import "PBJGLProgram.h"
-#import "SplitFilter.h"
 #import "VideoFilterManager.h"
+#import "GPUImageSplitFilter.h"
 
 #import <ImageIO/ImageIO.h>
 #import <OpenGLES/EAGL.h>
@@ -143,8 +143,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     
     AVCaptureVideoPreviewLayer *_previewLayer;
     CGRect _cleanAperture;
-    GLKView *_filteredPreviewView;
-    GLKView *_filteredSmallPreviewView;
+    GPUImageView *_filteredPreviewView;
+    GPUImageView *_filteredSmallPreviewView;
 
     CMTime _startTimestamp;
     CMTime _lastTimestamp;
@@ -200,10 +200,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 @property (nonatomic) AVCaptureDevice *currentDevice;
 
-@property (nonatomic, strong) SplitFilter *splitFilter;
-
 @property (nonatomic, strong) GPUImageRawDataInput *rawDataInput;
-@property (nonatomic, strong) GPUImageRawDataOutput *rawDataOutput;
+@property (nonatomic, strong) GPUImageFilterGroup *currentFilter;
+@property (nonatomic, strong) VideoFilterManager *filterManager;
 
 @end
 
@@ -797,6 +796,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationWillEnterForeground:) name:@"UIApplicationWillEnterForegroundNotification" object:[UIApplication sharedApplication]];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidEnterBackground:) name:@"UIApplicationDidEnterBackgroundNotification" object:[UIApplication sharedApplication]];
+        
+        _filterManager = [[VideoFilterManager alloc] init];
     }
     return self;
 }
@@ -821,18 +822,16 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 {
     DLog(@"resetting preview views...");
     
-    _filteredPreviewView = [[GLKView alloc] initWithFrame:CGRectZero context:_context];
-    _filteredPreviewView.enableSetNeedsDisplay = NO;
-    _filteredPreviewView.frame = CGRectMake(0, 0, 640, 640);
+    _filteredPreviewView = [[GPUImageView alloc] initWithFrame:CGRectMake(0, 0, 640, 640)];
+    [_filteredPreviewView setFillMode:kGPUImageFillModePreserveAspectRatioAndFill];
     
     CGRect smallPreviewBounds = _filteredPreviewView.bounds;
     static const float scale = 0.2;
     smallPreviewBounds.size.width = smallPreviewBounds.size.width * scale;
     smallPreviewBounds.size.height = smallPreviewBounds.size.height * scale;
     
-    _filteredSmallPreviewView = [[GLKView alloc] initWithFrame:CGRectZero context:_contextPreview];
-    _filteredSmallPreviewView.enableSetNeedsDisplay = NO;
-    _filteredSmallPreviewView.frame = smallPreviewBounds;
+    _filteredSmallPreviewView = [[GPUImageView alloc] initWithFrame:smallPreviewBounds];
+    [_filteredSmallPreviewView setFillMode:kGPUImageFillModePreserveAspectRatioAndFill];
     
     DLog(@"reset preview views!");
 }
@@ -1218,6 +1217,7 @@ typedef void (^PBJVisionBlock)();
         } else if (supportsVideoRangeYUV) {
             videoSettings = @{ (id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) };
         }
+        videoSettings = @{ (id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA) };
         if (videoSettings)
             [_captureOutputVideo setVideoSettings:videoSettings];
         
@@ -2571,20 +2571,25 @@ typedef void (^PBJVisionBlock)();
 - (void)clearPreviewView
 {
     // clear main preview
-    [EAGLContext setCurrentContext:_context];
-    [_filteredPreviewView bindDrawable];
-    glClearColor(0.0, 0.0, 0.0, 1.0);
-    glClear(GL_COLOR_BUFFER_BIT);
-    [_filteredPreviewView display];
+//    [EAGLContext setCurrentContext:_context];
+//    [_filteredPreviewView bindDrawable];
+//    glClearColor(0.0, 0.0, 0.0, 1.0);
+//    glClear(GL_COLOR_BUFFER_BIT);
+//    [_filteredPreviewView display];
+    
+    [_currentFilter removeAllTargets];
+    [_currentFilter addTarget:_filteredPreviewView];
     
     // clear small preview if it is enabled
     if ( self.smallPreviewEnabled )
     {
-        [EAGLContext setCurrentContext:_contextPreview];
-        [_filteredSmallPreviewView bindDrawable];
-        glClearColor(0.0, 0.0, 0.0, 1.0);
-        glClear(GL_COLOR_BUFFER_BIT);
-        [_filteredSmallPreviewView display];
+//        [EAGLContext setCurrentContext:_contextPreview];
+//        [_filteredSmallPreviewView bindDrawable];
+//        glClearColor(0.0, 0.0, 0.0, 1.0);
+//        glClear(GL_COLOR_BUFFER_BIT);
+//        [_filteredSmallPreviewView display];
+        
+        [_currentFilter addTarget:_filteredSmallPreviewView];
     }
 }
 
@@ -2602,37 +2607,7 @@ typedef void (^PBJVisionBlock)();
         return NULL;
     }
     
-    // GPUImage
-    size_t height = CVPixelBufferGetHeight(imageBuffer);
-    size_t width = CVPixelBufferGetWidth(imageBuffer);
-    size_t bytes = CVPixelBufferGetBytesPerRow(imageBuffer);
-    GLubyte *rawDataBytes = (GLubyte*)CVPixelBufferGetBaseAddress(imageBuffer);
     
-    if(!_rawDataInput)
-    {
-        _rawDataInput = [[GPUImageRawDataInput alloc] initWithBytes:rawDataBytes size:CGSizeMake(360, 360) pixelFormat:GPUPixelFormatBGRA type:GPUPixelTypeUByte];
-        _rawDataOutput = [[GPUImageRawDataOutput alloc] initWithImageSize:CGSizeMake(360, 360) resultsInBGRAFormat:YES];
-        
-        [_rawDataInput addTarget:_rawDataOutput];
-        __unsafe_unretained GPUImageRawDataOutput * weakOutput = _rawDataOutput;
-        [_rawDataOutput setNewFrameAvailableBlock:^{
-            GLubyte *outputBytes = [weakOutput rawBytesForImage];
-            NSInteger bytesPerRow = [weakOutput bytesPerRowInOutput];
-            //NSLog(@"Bytes per row: %ld", (long)bytesPerRow);
-            
-            CVPixelBufferRef pxbuffer = NULL;
-            NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:
-                                     [NSNumber numberWithBool:YES], kCVPixelBufferCGImageCompatibilityKey,
-                                     [NSNumber numberWithBool:YES], kCVPixelBufferCGBitmapContextCompatibilityKey,
-                                     nil];
-            CVPixelBufferCreateWithBytes(kCFAllocatorDefault,width,height,kCVPixelFormatType_32BGRA,outputBytes,bytesPerRow,NULL,NULL,(__bridge CFDictionaryRef)options,&pxbuffer);
-            
-            [weakOutput unlockFramebufferAfterReading];
-        }];
-    }
-    
-    [_rawDataInput updateDataFromBytes:rawDataBytes size:CGSizeMake(360, 360)];
-    [_rawDataInput processData];
     
     // convert this sample buffer into a CIImage (null colorspace to avoid colormatching)
     NSDictionary *options = @{ (id)kCIImageColorSpace : (id)kCFNull };
@@ -2653,104 +2628,152 @@ typedef void (^PBJVisionBlock)();
         CMTIME_COMPARE_INLINE(_lastVideoDisplayTimestamp, >, currentTimestamp) ||
         CMTIME_COMPARE_INLINE(CMTimeSubtract(currentTimestamp, _lastVideoDisplayTimestamp), >, _minDisplayDuration))
     {
-        // determine the percentage between the two active filters
-        CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
-                                 self.filterOffset - (truncf(self.filterOffset)));
-        
-        // get filtered images based on the filter percent
-        CIImage *filter1Image = nil;
-        CIImage *filter2Image = nil;
-        if ( filterPercent <= 0.01 )
-        {
-            // percent is less than 1% (essentially 0) so only render one filtered image
-            filter1Image = [VideoFilterManager filterImage:image withFilterIndex:floorf(self.filterOffset)];
-        }
-        else if ( filterPercent >= 0.99 )
-        {
-            // percent is greater than 99% (essentially 100) so only render the other filtered image
-            filter1Image = [VideoFilterManager filterImage:image withFilterIndex:ceilf(self.filterOffset)];
-        }
-        else {
-            // percent is between 1% and 99% so we are transitioning between filters. render both
-            filter1Image = [VideoFilterManager filterImage:image withFilterIndex:floorf(self.filterOffset)];
-            filter2Image = [VideoFilterManager filterImage:image withFilterIndex:ceilf(self.filterOffset)];
-        }
-        
-        // determine rect for full size preview (need to take screen scale into account
-        CGSize previewSize = _filteredPreviewView.layer.frame.size;
-        CGRect previewRect = CGRectMake(0, 0, previewSize.width, previewSize.height);
-        previewRect.size.width *= _screenScale;
-        previewRect.size.height *= _screenScale;
-        
-        // determine rect for drawing image into preview by center cropping source rect based on preview aspect ratio
-        CGFloat previewAspect = (previewSize.width  / previewSize.height);
-        CGRect drawRect = [self centerCropRect:sourceExtent toAspectRatio:previewAspect];
-        
-        // get ready to draw
-        [EAGLContext setCurrentContext:_context];
-        [_filteredPreviewView bindDrawable];
-        
-         //first, draw filterd images
-        if ( filter2Image )
-        {
-            // determine left and right rects for drawing two filters
-            CGFloat rightWidth = (previewRect.size.width * filterPercent);
-            CGFloat leftWidth = previewRect.size.width - rightWidth;
-            CGRect leftPreviewRect = previewRect;
-            leftPreviewRect.size.width = leftWidth;
-            CGRect rightPreviewRect = previewRect;
-            rightPreviewRect.origin.x = previewRect.origin.x + leftWidth;
-            rightPreviewRect.size.width = rightWidth;
-            
-            rightWidth = (drawRect.size.width * filterPercent);
-            leftWidth = drawRect.size.width - rightWidth;
-            CGRect leftDrawRect = drawRect;
-            leftDrawRect.size.width = leftWidth;
-            CGRect rightDrawRect = drawRect;
-            rightDrawRect.origin.x = drawRect.origin.x + leftWidth;
-            rightDrawRect.size.width = rightWidth;
-            
-            // draw filter1 OR unfilted on the left, and filter2 on the right
-            [_ciContext drawImage:(filter1Image ?: image) inRect:leftPreviewRect fromRect:leftDrawRect];
-            [_ciContext drawImage:filter2Image inRect:rightPreviewRect fromRect:rightDrawRect];
-        }
-        else
-        {
-            // we do not have filter2 image, so draw filter1 OR unfiltered image into full preview
-            [_ciContext drawImage:(filter1Image ?: image) inRect:previewRect fromRect:drawRect];
-        }
-        
-        // Draw CIKernel output
-//        CIImage *filteredImage = [image copy];
-//        if (!self.splitFilter) {
-//            self.splitFilter = [[SplitFilter alloc] init];
+//        // determine the percentage between the two active filters
+//        CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
+//                                 self.filterOffset - (truncf(self.filterOffset)));
+//        
+//        // get filtered images based on the filter percent
+//        CIImage *filter1Image = nil;
+//        CIImage *filter2Image = nil;
+//        if ( filterPercent <= 0.01 )
+//        {
+//            // percent is less than 1% (essentially 0) so only render one filtered image
+//            filter1Image = [VideoFilterManager filterImage:image withFilterIndex:floorf(self.filterOffset)];
 //        }
-//        [self.splitFilter setLeft:filter1Image];
-//        [self.splitFilter setRight:filter2Image];
-//        [self.splitFilter setOffset:leftPerc];
-//        filteredImage = [self.splitFilter outputImage];
-//        [_ciContext drawImage:filteredImage ?: image inRect:previewRect fromRect:drawRect];
+//        else if ( filterPercent >= 0.99 )
+//        {
+//            // percent is greater than 99% (essentially 100) so only render the other filtered image
+//            filter1Image = [VideoFilterManager filterImage:image withFilterIndex:ceilf(self.filterOffset)];
+//        }
+//        else {
+//            // percent is between 1% and 99% so we are transitioning between filters. render both
+//            filter1Image = [VideoFilterManager filterImage:image withFilterIndex:floorf(self.filterOffset)];
+//            filter2Image = [VideoFilterManager filterImage:image withFilterIndex:ceilf(self.filterOffset)];
+//        }
+//        
+//        // determine rect for full size preview (need to take screen scale into account
+//        CGSize previewSize = _filteredPreviewView.layer.frame.size;
+//        CGRect previewRect = CGRectMake(0, 0, previewSize.width, previewSize.height);
+//        previewRect.size.width *= _screenScale;
+//        previewRect.size.height *= _screenScale;
+//        
+//        // determine rect for drawing image into preview by center cropping source rect based on preview aspect ratio
+//        CGFloat previewAspect = (previewSize.width  / previewSize.height);
+//        CGRect drawRect = [self centerCropRect:sourceExtent toAspectRatio:previewAspect];
+//        
+//        // get ready to draw
+//        [EAGLContext setCurrentContext:_context];
+//        [_filteredPreviewView bindDrawable];
+//        
+//         //first, draw filterd images
+//        if ( filter2Image )
+//        {
+//            // determine left and right rects for drawing two filters
+//            CGFloat rightWidth = (previewRect.size.width * filterPercent);
+//            CGFloat leftWidth = previewRect.size.width - rightWidth;
+//            CGRect leftPreviewRect = previewRect;
+//            leftPreviewRect.size.width = leftWidth;
+//            CGRect rightPreviewRect = previewRect;
+//            rightPreviewRect.origin.x = previewRect.origin.x + leftWidth;
+//            rightPreviewRect.size.width = rightWidth;
+//            
+//            rightWidth = (drawRect.size.width * filterPercent);
+//            leftWidth = drawRect.size.width - rightWidth;
+//            CGRect leftDrawRect = drawRect;
+//            leftDrawRect.size.width = leftWidth;
+//            CGRect rightDrawRect = drawRect;
+//            rightDrawRect.origin.x = drawRect.origin.x + leftWidth;
+//            rightDrawRect.size.width = rightWidth;
+//            
+//            // draw filter1 OR unfilted on the left, and filter2 on the right
+//            [_ciContext drawImage:(filter1Image ?: image) inRect:leftPreviewRect fromRect:leftDrawRect];
+//            [_ciContext drawImage:filter2Image inRect:rightPreviewRect fromRect:rightDrawRect];
+//        }
+//        else
+//        {
+//            // we do not have filter2 image, so draw filter1 OR unfiltered image into full preview
+//            [_ciContext drawImage:(filter1Image ?: image) inRect:previewRect fromRect:drawRect];
+//        }
+//        
+//        // Draw CIKernel output
+////        CIImage *filteredImage = [image copy];
+////        if (!self.splitFilter) {
+////            self.splitFilter = [[SplitFilter alloc] init];
+////        }
+////        [self.splitFilter setLeft:filter1Image];
+////        [self.splitFilter setRight:filter2Image];
+////        [self.splitFilter setOffset:leftPerc];
+////        filteredImage = [self.splitFilter outputImage];
+////        [_ciContext drawImage:filteredImage ?: image inRect:previewRect fromRect:drawRect];
+//        
+//        // commit drawing
+//        [_filteredPreviewView display];
+//        
+//        // draw the small preview view if enabled (taking screen scale into consideration)
+//        if ( self.smallPreviewEnabled )
+//        {
+//            [EAGLContext setCurrentContext:_contextPreview];
+//            [_filteredSmallPreviewView bindDrawable];
+//            CGSize smallPreviewSize = _filteredSmallPreviewView.layer.frame.size;
+//            CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
+//            smallPreviewBounds.size.width *= _screenScale;
+//            smallPreviewBounds.size.height *= _screenScale;
+//            [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
+//            [_filteredSmallPreviewView display];
+//        }
+//        
+        _lastVideoDisplayTimestamp = currentTimestamp;
+//        
+//        [self calculateFramerateAtTimestamp:currentTimestamp];
+//        NSLog(@"fps: %f", _frameRate);
         
-        // commit drawing
-        [_filteredPreviewView display];
+        // Get video dimensions for GPUImage
         
-        // draw the small preview view if enabled (taking screen scale into consideration)
-        if ( self.smallPreviewEnabled )
+        size_t height = CVPixelBufferGetHeight(imageBuffer);
+        size_t width = CVPixelBufferGetWidth(imageBuffer);
+        GLubyte *rawDataBytes = (GLubyte*)CVPixelBufferGetBaseAddress(imageBuffer);
+        
+        CGSize imageSize = CGSizeMake(width, height);
+        
+        // Create GPUImageRawDataInput so we can filter pixel buffer with GPUImage
+        
+        if(!_rawDataInput)
         {
-            [EAGLContext setCurrentContext:_contextPreview];
-            [_filteredSmallPreviewView bindDrawable];
-            CGSize smallPreviewSize = _filteredSmallPreviewView.layer.frame.size;
-            CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
-            smallPreviewBounds.size.width *= _screenScale;
-            smallPreviewBounds.size.height *= _screenScale;
-            [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
-            [_filteredSmallPreviewView display];
+            _rawDataInput = [[GPUImageRawDataInput alloc] initWithBytes:rawDataBytes size:imageSize];
         }
         
-        _lastVideoDisplayTimestamp = currentTimestamp;
+        // Get filter based on scrollview offset
         
-        //[self calculateFramerateAtTimestamp:currentTimestamp];
-        //NSLog(@"fps: %f", _frameRate);
+        GPUImageFilterGroup *newFilter = [_filterManager splitFilterGroupAtIndex:self.filterOffset];
+        
+        // Check if the filter needs to be changed
+        
+        if(![[_rawDataInput targets] containsObject:newFilter])
+        {
+            [_rawDataInput removeTarget:_currentFilter];
+            [_currentFilter removeAllTargets];
+            
+            _currentFilter = newFilter;
+            [_rawDataInput addTarget:_currentFilter];
+            [_currentFilter addTarget:_filteredPreviewView];
+            
+            //draw the small preview view if enabled (taking screen scale into consideration)
+            
+            if ( self.smallPreviewEnabled )
+            {
+                [_currentFilter addTarget:_filteredSmallPreviewView];
+            }
+        }
+        
+        // Tell spilt filter what percentage should be left and right filter
+        
+        CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset : self.filterOffset - (truncf(self.filterOffset)));
+        GPUImageSplitFilter *splitFilter = (GPUImageSplitFilter*)[_currentFilter filterAtIndex:_currentFilter.filterCount-1];
+        [splitFilter setOffset:filterPercent];
+        
+        [_rawDataInput updateDataFromBytes:rawDataBytes size:imageSize];
+        [_rawDataInput processData];
+        
     }
     
     // center crop the source image to a square for video output
