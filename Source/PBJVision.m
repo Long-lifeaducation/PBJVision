@@ -735,7 +735,10 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 - (void)setAudioStopTimestamp:(CMTime)audioStopTimestamp
 {
     [self _enqueueBlockOnCaptureVideoQueue:^{
-        _lastPauseTimestamp = audioStopTimestamp;
+        // only set a new pause timestamp if the old one is invalid
+        if ( CMTIME_IS_INVALID(_lastPauseTimestamp) ) {
+            _lastPauseTimestamp = audioStopTimestamp;
+        }
     }];
 }
 
