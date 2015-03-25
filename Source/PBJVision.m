@@ -2607,8 +2607,6 @@ typedef void (^PBJVisionBlock)();
         return NULL;
     }
     
-    
-    
     // convert this sample buffer into a CIImage (null colorspace to avoid colormatching)
     NSDictionary *options = @{ (id)kCIImageColorSpace : (id)kCFNull };
     CIImage *image = [CIImage imageWithCVPixelBuffer:imageBuffer options:options];
@@ -2617,9 +2615,20 @@ typedef void (^PBJVisionBlock)();
     // manual mirroring!
     if (_cameraDevice == PBJCameraDeviceFront)
     {
+        // this will mirror the image in the final output video
         CGSize size = [image extent].size;
         image = [image imageByApplyingTransform:CGAffineTransformMakeScale(-1.0, 1.0)];
         image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
+        
+        // this will mirror the previews which display unmirrored images from GPUImage
+        self.filteredPreviewView.transform = CGAffineTransformMakeScale(-1.0f, 1.0f);
+        self.filteredSmallPreviewView.transform = CGAffineTransformMakeScale(-1.0f, 1.0f);
+    }
+    else
+    {
+        // unmirro the preview view for back facing camera
+        self.filteredPreviewView.transform = CGAffineTransformIdentity;
+        self.filteredSmallPreviewView.transform = CGAffineTransformIdentity;
     }
     
     // draw filtered image into preview view if enough time has past since last drawing
