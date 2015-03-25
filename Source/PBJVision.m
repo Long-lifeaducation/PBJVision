@@ -2619,16 +2619,6 @@ typedef void (^PBJVisionBlock)();
         CGSize size = [image extent].size;
         image = [image imageByApplyingTransform:CGAffineTransformMakeScale(-1.0, 1.0)];
         image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
-        
-        // this will mirror the previews which display unmirrored images from GPUImage
-        self.filteredPreviewView.transform = CGAffineTransformMakeScale(-1.0f, 1.0f);
-        self.filteredSmallPreviewView.transform = CGAffineTransformMakeScale(-1.0f, 1.0f);
-    }
-    else
-    {
-        // unmirro the preview view for back facing camera
-        self.filteredPreviewView.transform = CGAffineTransformIdentity;
-        self.filteredSmallPreviewView.transform = CGAffineTransformIdentity;
     }
     
     // draw filtered image into preview view if enough time has past since last drawing
@@ -2736,8 +2726,9 @@ typedef void (^PBJVisionBlock)();
 //        [self calculateFramerateAtTimestamp:currentTimestamp];
 //        NSLog(@"fps: %f", _frameRate);
         
-        // Get video dimensions for GPUImage
         
+        
+        // Get video dimensions for GPUImage
         size_t height = CVPixelBufferGetHeight(imageBuffer);
         size_t width = CVPixelBufferGetWidth(imageBuffer);
         GLubyte *rawDataBytes = (GLubyte*)CVPixelBufferGetBaseAddress(imageBuffer);
@@ -2745,19 +2736,15 @@ typedef void (^PBJVisionBlock)();
         CGSize imageSize = CGSizeMake(width, height);
         
         // Create GPUImageRawDataInput so we can filter pixel buffer with GPUImage
-        
-        if(!_rawDataInput)
-        {
+        if (!_rawDataInput) {
             _rawDataInput = [[GPUImageRawDataInput alloc] initWithBytes:rawDataBytes size:imageSize];
         }
         
         // Get filter based on scrollview offset
-        
         GPUImageFilterGroup *newFilter = [_filterManager splitFilterGroupAtIndex:self.filterOffset];
         
         // Check if the filter needs to be changed
-        
-        if(![[_rawDataInput targets] containsObject:newFilter])
+        if (![[_rawDataInput targets] containsObject:newFilter])
         {
             [_rawDataInput removeTarget:_currentFilter];
             [_currentFilter removeAllTargets];
@@ -2766,17 +2753,31 @@ typedef void (^PBJVisionBlock)();
             [_rawDataInput addTarget:_currentFilter];
             [_currentFilter addTarget:_filteredPreviewView];
             
-            //draw the small preview view if enabled (taking screen scale into consideration)
-            
+            // draw the small preview view if enabled (taking screen scale into consideration)
             if ( self.smallPreviewEnabled )
             {
                 [_currentFilter addTarget:_filteredSmallPreviewView];
             }
         }
         
-        // Tell spilt filter what percentage should be left and right filter
+        // determine rotation used for mirroring
+        GPUImageRotationMode rotation = (_cameraDevice == PBJCameraDeviceFront ?
+                                         kGPUImageFlipHorizonal : kGPUImageNoRotation);
         
-        CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset : self.filterOffset - (truncf(self.filterOffset)));
+        // to handle mirroring with GPUImage, we all the filters to flip horizontally
+        // except for split filter (because if we flip split filter, the filter transition
+        // will be backwards).
+        for ( int i = 0; i < _currentFilter.filterCount; i++ )
+        {
+            GPUImageFilter *filter = (GPUImageFilter *)[_currentFilter filterAtIndex:i];
+            if ( [filter isKindOfClass:[GPUImageSplitFilter class]] ) {
+                [filter setInputRotation:rotation atIndex:0];
+            }
+        }
+        
+        // Tell spilt filter what percentage should be left and right filter
+        CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
+                                 self.filterOffset - (truncf(self.filterOffset)));
         GPUImageSplitFilter *splitFilter = (GPUImageSplitFilter*)[_currentFilter filterAtIndex:_currentFilter.filterCount-1];
         [splitFilter setOffset:filterPercent];
         
