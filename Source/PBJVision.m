@@ -200,7 +200,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 @property (nonatomic) AVCaptureDevice *currentDevice;
 
-@property (nonatomic, strong) GPUImageRawDataInput *rawDataInput;
+@property (nonatomic, strong) GPUImageMovie *movieDataInput;
 @property (nonatomic, strong) GPUImageFilterGroup *currentFilterGroup;
 @property (nonatomic, strong) VideoFilterManager *filterManager;
 
@@ -1217,7 +1217,6 @@ typedef void (^PBJVisionBlock)();
         } else if (supportsVideoRangeYUV) {
             videoSettings = @{ (id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) };
         }
-        videoSettings = @{ (id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_32BGRA) };
         if (videoSettings)
             [_captureOutputVideo setVideoSettings:videoSettings];
         
@@ -2727,30 +2726,23 @@ typedef void (^PBJVisionBlock)();
 //        NSLog(@"fps: %f", _frameRate);
         
         
-        
-        // Get video dimensions for GPUImage
-        size_t height = CVPixelBufferGetHeight(imageBuffer);
-        size_t width = CVPixelBufferGetWidth(imageBuffer);
-        GLubyte *rawDataBytes = (GLubyte*)CVPixelBufferGetBaseAddress(imageBuffer);
-        
-        CGSize imageSize = CGSizeMake(width, height);
-        
-        // Create GPUImageRawDataInput so we can filter pixel buffer with GPUImage
-        if (!_rawDataInput) {
-            _rawDataInput = [[GPUImageRawDataInput alloc] initWithBytes:rawDataBytes size:imageSize];
+        if(!_movieDataInput)
+        {
+            _movieDataInput = [[GPUImageMovie alloc] init];
+            [_movieDataInput yuvConversionSetup];
         }
         
         // Get filter based on scrollview offset
         GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupAtIndex:self.filterOffset];
         
         // Check if the filter needs to be changed
-        if (![[_rawDataInput targets] containsObject:newFilterGroup])
+        if (![[_movieDataInput targets] containsObject:newFilterGroup])
         {
-            [_rawDataInput removeTarget:_currentFilterGroup];
+            [_movieDataInput removeTarget:_currentFilterGroup];
             [_currentFilterGroup removeAllTargets];
             
             _currentFilterGroup = newFilterGroup;
-            [_rawDataInput addTarget:_currentFilterGroup];
+            [_movieDataInput addTarget:_currentFilterGroup];
             [_currentFilterGroup addTarget:_filteredPreviewView];
             
             // draw the small preview view if enabled (taking screen scale into consideration)
@@ -2781,9 +2773,9 @@ typedef void (^PBJVisionBlock)();
         GPUImageSplitFilter *splitFilter = (GPUImageSplitFilter*)[_currentFilterGroup filterAtIndex:_currentFilterGroup.filterCount-1];
         [splitFilter setOffset:filterPercent];
         
-        [_rawDataInput updateDataFromBytes:rawDataBytes size:imageSize];
-        [_rawDataInput processData];
-        
+        runSynchronouslyOnVideoProcessingQueue(^{
+            [_movieDataInput processMovieFrame:sampleBuffer];
+        });
     }
     
     // center crop the source image to a square for video output
