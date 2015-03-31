@@ -169,6 +169,16 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 @property (nonatomic, readonly) GPUImageView *filteredSmallPreviewView;
 @property (nonatomic, readwrite) BOOL smallPreviewEnabled;
 
+/** 
+ this variable is used when cropping the video to a square. Ths value of this percentage
+ should be 0-1 and indicate where the center point in the video is. For example, a value
+ of 0.5 indicates the video should be exactly center-cropped (ex. the center of the raw video
+ frames will be the center of the final video). A value of 0 indicates that cropping will be done
+ at the top of the video (or left if frames are landscape) and 1 indicates cropping from the bottom
+ (or right if landscape). Values between 0 and 1 are interpolated across the frame.
+ */
+@property (nonatomic, readwrite) CGFloat centerPercentage;
+
 - (void)startPreview;
 - (void)stopPreview;
 

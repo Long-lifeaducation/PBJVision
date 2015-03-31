@@ -766,6 +766,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         _ciContext = [CIContext contextWithEAGLContext:_context options:options];
         _ciContextPreview = [CIContext contextWithEAGLContext:_contextPreview options:options];
         
+        _centerPercentage = 0.5f;
+        
         // set default capture preset
         _captureSessionPreset = AVCaptureSessionPresetMedium;
 
@@ -2782,7 +2784,7 @@ typedef void (^PBJVisionBlock)();
     }
     
     // center crop the source image to a square for video output
-    CGRect squareRect = [self centerCropRect:sourceExtent toAspectRatio:1.0f];
+    CGRect squareRect = [self squareCropRect:sourceExtent withCenterPercent:self.centerPercentage];
     CIImage *cropImage = [image imageByCroppingToRect:squareRect];
     
     // deterine the scale and amount video should be moved over to fit the video output dimensions
@@ -2824,15 +2826,55 @@ typedef void (^PBJVisionBlock)();
     CGRect croppedRect = sourceRect;
     if ( sourceAspect > newAspectRatio )
     {
-        // use full height of the video image, and center crop the width
+        // landscape. use full height of the video image, and center crop the width
         croppedRect.size.width = (croppedRect.size.height * newAspectRatio);
         croppedRect.origin.x = (sourceRect.size.width - croppedRect.size.width) * 0.5f;
     }
     else
     {
-        // use full width of the video image, and center crop the height
+        // portrait. use full width of the video image, and center crop the height
         croppedRect.size.height = (croppedRect.size.width / newAspectRatio);
         croppedRect.origin.y = (sourceRect.size.height - croppedRect.size.height) * 0.5f;
+    }
+    
+    return croppedRect;
+}
+
+- (CGRect)squareCropRect:(CGRect)sourceRect withCenterPercent:(CGFloat)centerPercent
+{
+    CGFloat sourceAspect = (sourceRect.size.width / sourceRect.size.height);
+    
+    // determine cropped rect based on comparison to new aspect ratio
+    CGRect croppedRect = sourceRect;
+    if ( sourceAspect > 1.0 )
+    {
+        // landscape. use full height of the video image, and determine horizontal centering by percentage
+        croppedRect.size.width = croppedRect.size.height;
+        CGFloat sourceCenterX = (sourceRect.size.width * centerPercent);
+        croppedRect.origin.x = sourceCenterX - (croppedRect.size.width * 0.5f);
+        
+        // check bounds
+        if ( croppedRect.origin.x < 0.0f ) {
+            croppedRect.origin.x = 0.0f;
+        }
+        else if ( croppedRect.origin.x + croppedRect.size.width > sourceRect.size.width ) {
+            croppedRect.origin.x = sourceRect.size.width - croppedRect.size.width;
+        }
+    }
+    else
+    {
+        // portrait. use full width of the video image, and determine vertical centering by percentage
+        croppedRect.size.height = croppedRect.size.width;
+        CGFloat sourceCenterY = (sourceRect.size.height * (1.0f - centerPercent));
+        croppedRect.origin.y = sourceCenterY - (croppedRect.size.height * 0.5f);
+        
+        // check bounds
+        if ( croppedRect.origin.y < 0.0f ) {
+            croppedRect.origin.y = 0.0f;
+        }
+        else if ( croppedRect.origin.y + croppedRect.size.height > sourceRect.size.height ) {
+            croppedRect.origin.y = sourceRect.size.height - croppedRect.size.height;
+        }
     }
     
     return croppedRect;
