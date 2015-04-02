@@ -2625,112 +2625,41 @@ typedef void (^PBJVisionBlock)();
         image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
     }
     
+    // center crop the source image to a square for video output
+    CGRect squareRect = [self squareCropRect:sourceExtent withCenterPercent:self.centerPercentage];
+    CIImage *cropImage = [image imageByCroppingToRect:squareRect];
+    
+    // deterine the scale and amount video should be moved over to fit the video output dimensions
+    float scale = 1.0f;
+    float xTrans = -squareRect.origin.x;
+    float yTrans = -squareRect.origin.y;
+    if ( _outputFormat == PBJOutputFormat360x360 ) {
+        scale = (360.0f / squareRect.size.width);
+        xTrans *= scale;
+        yTrans *= scale;
+    }
+    
+    // apply transform to make final image fit perfect in output video dimensions
+    if ( scale != 1.0f ) {
+        cropImage = [image imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
+    }
+    cropImage = [cropImage imageByApplyingTransform:CGAffineTransformMakeTranslation(xTrans, yTrans)];
+    
+    // render the filtered, square, center cropped image back to the outup video
+    CVPixelBufferRef renderedOutputPixelBuffer = NULL;
+    if ( _mediaWriter.videoReady ) {
+        CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
+        if ( !err && renderedOutputPixelBuffer ) {
+            [_ciContext render:cropImage toCVPixelBuffer:renderedOutputPixelBuffer];
+        }
+    }
+    
     // draw filtered image into preview view if enough time has past since last drawing
     CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     if (CMTIME_IS_INVALID(_lastVideoDisplayTimestamp) ||
         CMTIME_COMPARE_INLINE(_lastVideoDisplayTimestamp, >, currentTimestamp) ||
         CMTIME_COMPARE_INLINE(CMTimeSubtract(currentTimestamp, _lastVideoDisplayTimestamp), >, _minDisplayDuration))
     {
-//        // determine the percentage between the two active filters
-//        CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
-//                                 self.filterOffset - (truncf(self.filterOffset)));
-//        
-//        // get filtered images based on the filter percent
-//        CIImage *filter1Image = nil;
-//        CIImage *filter2Image = nil;
-//        if ( filterPercent <= 0.01 )
-//        {
-//            // percent is less than 1% (essentially 0) so only render one filtered image
-//            filter1Image = [VideoFilterManager filterImage:image withFilterIndex:floorf(self.filterOffset)];
-//        }
-//        else if ( filterPercent >= 0.99 )
-//        {
-//            // percent is greater than 99% (essentially 100) so only render the other filtered image
-//            filter1Image = [VideoFilterManager filterImage:image withFilterIndex:ceilf(self.filterOffset)];
-//        }
-//        else {
-//            // percent is between 1% and 99% so we are transitioning between filters. render both
-//            filter1Image = [VideoFilterManager filterImage:image withFilterIndex:floorf(self.filterOffset)];
-//            filter2Image = [VideoFilterManager filterImage:image withFilterIndex:ceilf(self.filterOffset)];
-//        }
-//        
-//        // determine rect for full size preview (need to take screen scale into account
-//        CGSize previewSize = _filteredPreviewView.layer.frame.size;
-//        CGRect previewRect = CGRectMake(0, 0, previewSize.width, previewSize.height);
-//        previewRect.size.width *= _screenScale;
-//        previewRect.size.height *= _screenScale;
-//        
-//        // determine rect for drawing image into preview by center cropping source rect based on preview aspect ratio
-//        CGFloat previewAspect = (previewSize.width  / previewSize.height);
-//        CGRect drawRect = [self centerCropRect:sourceExtent toAspectRatio:previewAspect];
-//        
-//        // get ready to draw
-//        [EAGLContext setCurrentContext:_context];
-//        [_filteredPreviewView bindDrawable];
-//        
-//         //first, draw filterd images
-//        if ( filter2Image )
-//        {
-//            // determine left and right rects for drawing two filters
-//            CGFloat rightWidth = (previewRect.size.width * filterPercent);
-//            CGFloat leftWidth = previewRect.size.width - rightWidth;
-//            CGRect leftPreviewRect = previewRect;
-//            leftPreviewRect.size.width = leftWidth;
-//            CGRect rightPreviewRect = previewRect;
-//            rightPreviewRect.origin.x = previewRect.origin.x + leftWidth;
-//            rightPreviewRect.size.width = rightWidth;
-//            
-//            rightWidth = (drawRect.size.width * filterPercent);
-//            leftWidth = drawRect.size.width - rightWidth;
-//            CGRect leftDrawRect = drawRect;
-//            leftDrawRect.size.width = leftWidth;
-//            CGRect rightDrawRect = drawRect;
-//            rightDrawRect.origin.x = drawRect.origin.x + leftWidth;
-//            rightDrawRect.size.width = rightWidth;
-//            
-//            // draw filter1 OR unfilted on the left, and filter2 on the right
-//            [_ciContext drawImage:(filter1Image ?: image) inRect:leftPreviewRect fromRect:leftDrawRect];
-//            [_ciContext drawImage:filter2Image inRect:rightPreviewRect fromRect:rightDrawRect];
-//        }
-//        else
-//        {
-//            // we do not have filter2 image, so draw filter1 OR unfiltered image into full preview
-//            [_ciContext drawImage:(filter1Image ?: image) inRect:previewRect fromRect:drawRect];
-//        }
-//        
-//        // Draw CIKernel output
-////        CIImage *filteredImage = [image copy];
-////        if (!self.splitFilter) {
-////            self.splitFilter = [[SplitFilter alloc] init];
-////        }
-////        [self.splitFilter setLeft:filter1Image];
-////        [self.splitFilter setRight:filter2Image];
-////        [self.splitFilter setOffset:leftPerc];
-////        filteredImage = [self.splitFilter outputImage];
-////        [_ciContext drawImage:filteredImage ?: image inRect:previewRect fromRect:drawRect];
-//        
-//        // commit drawing
-//        [_filteredPreviewView display];
-//        
-//        // draw the small preview view if enabled (taking screen scale into consideration)
-//        if ( self.smallPreviewEnabled )
-//        {
-//            [EAGLContext setCurrentContext:_contextPreview];
-//            [_filteredSmallPreviewView bindDrawable];
-//            CGSize smallPreviewSize = _filteredSmallPreviewView.layer.frame.size;
-//            CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
-//            smallPreviewBounds.size.width *= _screenScale;
-//            smallPreviewBounds.size.height *= _screenScale;
-//            [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
-//            [_filteredSmallPreviewView display];
-//        }
-//        
-        _lastVideoDisplayTimestamp = currentTimestamp;
-//        
-//        [self calculateFramerateAtTimestamp:currentTimestamp];
-//        NSLog(@"fps: %f", _frameRate);
-        
-        
         if(!_movieDataInput)
         {
             _movieDataInput = [[GPUImageMovie alloc] init];
@@ -2781,35 +2710,12 @@ typedef void (^PBJVisionBlock)();
         runSynchronouslyOnVideoProcessingQueue(^{
             [_movieDataInput processMovieFrame:sampleBuffer];
         });
-    }
-    
-    // center crop the source image to a square for video output
-    CGRect squareRect = [self squareCropRect:sourceExtent withCenterPercent:self.centerPercentage];
-    CIImage *cropImage = [image imageByCroppingToRect:squareRect];
-    
-    // deterine the scale and amount video should be moved over to fit the video output dimensions
-    float scale = 1.0f;
-    float xTrans = -squareRect.origin.x;
-    float yTrans = -squareRect.origin.y;
-    if ( _outputFormat == PBJOutputFormat360x360 ) {
-        scale = (360.0f / squareRect.size.width);
-        xTrans *= scale;
-        yTrans *= scale;
-    }
-    
-    // apply transform to make final image fit perfect in output video dimensions
-    if ( scale != 1.0f ) {
-        cropImage = [image imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
-    }
-    cropImage = [cropImage imageByApplyingTransform:CGAffineTransformMakeTranslation(xTrans, yTrans)];
-    
-    // render the filtered, square, center cropped image back to the outup video
-    CVPixelBufferRef renderedOutputPixelBuffer = NULL;
-    if ( _mediaWriter.videoReady ) {
-        CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
-        if ( !err && renderedOutputPixelBuffer ) {
-            [_ciContext render:cropImage toCVPixelBuffer:renderedOutputPixelBuffer];
-        }
+        
+        
+        _lastVideoDisplayTimestamp = currentTimestamp;
+        
+        //[self calculateFramerateAtTimestamp:currentTimestamp];
+        //NSLog(@"fps: %f", _frameRate);
     }
     
     // we are done with image buffer so unlock it before returning
