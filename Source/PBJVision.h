@@ -165,8 +165,9 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 @property (nonatomic, readonly) AVCaptureVideoPreviewLayer *previewLayer;
 @property (nonatomic, readonly) CGRect cleanAperture;
 
-@property (nonatomic, readonly) GPUImageView *filteredPreviewView;
-@property (nonatomic, readonly) GPUImageView *filteredSmallPreviewView;
+- (CALayer*)videoPreviewLayer;
+- (CALayer*)videoPreviewSmallLayer;
+
 @property (nonatomic, readwrite) BOOL smallPreviewEnabled;
 
 /** 
@@ -216,7 +217,12 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 @property (nonatomic, getter=isVideoRenderingEnabled) BOOL videoRenderingEnabled;
 @property (nonatomic, getter=isAudioCaptureEnabled) BOOL audioCaptureEnabled;
 @property (nonatomic) CGFloat screenScale;
+
+// this determines whether or not we update the offset of our split filter
 @property (nonatomic) BOOL isSwipeEnabled;
+
+// this determines whether we display video with PBJ or GPUImage
+@property (nonatomic) BOOL isFilterEnabled;
 
 @property (nonatomic, readonly) EAGLContext *context;
 @property (nonatomic, readonly) EAGLContext *contextPreview;
