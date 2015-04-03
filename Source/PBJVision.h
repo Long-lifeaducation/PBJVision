@@ -215,7 +215,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 @property (nonatomic, getter=isVideoRenderingEnabled) BOOL videoRenderingEnabled;
 @property (nonatomic, getter=isAudioCaptureEnabled) BOOL audioCaptureEnabled;
-@property (nonatomic) CGFloat screenScale; 
+@property (nonatomic) CGFloat screenScale;
+@property (nonatomic) BOOL isSwipeEnabled;
 
 @property (nonatomic, readonly) EAGLContext *context;
 @property (nonatomic, readonly) EAGLContext *contextPreview;

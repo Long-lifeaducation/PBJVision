@@ -2666,46 +2666,81 @@ typedef void (^PBJVisionBlock)();
             [_movieDataInput yuvConversionSetup];
         }
         
-        // Get filter based on scrollview offset
-        GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupAtIndex:self.filterOffset];
-        
-        // Check if the filter needs to be changed
-        if (![[_movieDataInput targets] containsObject:newFilterGroup])
+        if(_isSwipeEnabled)
         {
-            [_movieDataInput removeTarget:_currentFilterGroup];
-            [_currentFilterGroup removeAllTargets];
+            // Get filter based on scrollview offset
+            GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupAtIndex:self.filterOffset];
             
-            _currentFilterGroup = newFilterGroup;
-            [_movieDataInput addTarget:_currentFilterGroup];
-            [_currentFilterGroup addTarget:_filteredPreviewView];
-            
-            // draw the small preview view if enabled (taking screen scale into consideration)
-            if ( self.smallPreviewEnabled )
+            // Check if the filter needs to be changed
+            if (![[_movieDataInput targets] containsObject:newFilterGroup])
             {
-                [_currentFilterGroup addTarget:_filteredSmallPreviewView];
+                [_movieDataInput removeTarget:_currentFilterGroup];
+                [_currentFilterGroup removeAllTargets];
+                
+                _currentFilterGroup = newFilterGroup;
+                [_movieDataInput addTarget:_currentFilterGroup];
+                [_currentFilterGroup addTarget:_filteredPreviewView];
+                
+                // draw the small preview view if enabled (taking screen scale into consideration)
+                if ( self.smallPreviewEnabled )
+                {
+                    [_currentFilterGroup addTarget:_filteredSmallPreviewView];
+                }
             }
+            
+            // determine rotation used for mirroring
+            GPUImageRotationMode rotation = (_cameraDevice == PBJCameraDeviceFront ?
+                                             kGPUImageFlipHorizonal : kGPUImageNoRotation);
+            
+            // to handle mirroring with GPUImage, we just need to horizontal flip the
+            // initial filters in the chain (as long as they aren't split filters). This
+            // will flip image for left and right side of split, without flipping split direction
+            for ( int i = 0; i < _currentFilterGroup.initialFilters.count; i++ )
+            {
+                GPUImageFilter *filter = (GPUImageFilter *)_currentFilterGroup.initialFilters[i];
+                if ( ![filter isKindOfClass:[GPUImageSplitFilter class]] ) {
+                    [filter setInputRotation:rotation atIndex:0];
+                }
+            }
+            
+            // Tell spilt filter what percentage should be left and right filter
+            CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
+                                     self.filterOffset - (truncf(self.filterOffset)));
+            GPUImageSplitFilter *splitFilter = (GPUImageSplitFilter*)[_currentFilterGroup filterAtIndex:_currentFilterGroup.filterCount-1];
+            [splitFilter setOffset:filterPercent];
         }
         
-        // determine rotation used for mirroring
-        GPUImageRotationMode rotation = (_cameraDevice == PBJCameraDeviceFront ?
-                                         kGPUImageFlipHorizonal : kGPUImageNoRotation);
-        
-        // to handle mirroring with GPUImage, we just need to horizontal flip the
-        // initial filters in the chain (as long as they aren't split filters). This
-        // will flip image for left and right side of split, without flipping split direction
-        for ( int i = 0; i < _currentFilterGroup.initialFilters.count; i++ )
+        else
         {
-            GPUImageFilter *filter = (GPUImageFilter *)_currentFilterGroup.initialFilters[i];
-            if ( ![filter isKindOfClass:[GPUImageSplitFilter class]] ) {
-                [filter setInputRotation:rotation atIndex:0];
+            if(!_currentFilterGroup)
+            {
+                _currentFilterGroup = [_filterManager splitFilterGroupAtIndex:_filterOffset];
+                
+                // determine rotation used for mirroring
+                GPUImageRotationMode rotation = (_cameraDevice == PBJCameraDeviceFront ?
+                                                 kGPUImageFlipHorizonal : kGPUImageNoRotation);
+                
+                // to handle mirroring with GPUImage, we just need to horizontal flip the
+                // initial filters in the chain (as long as they aren't split filters). This
+                // will flip image for left and right side of split, without flipping split direction
+                for ( int i = 0; i < _currentFilterGroup.initialFilters.count; i++ )
+                {
+                    GPUImageFilter *filter = (GPUImageFilter *)_currentFilterGroup.initialFilters[i];
+                    if ( ![filter isKindOfClass:[GPUImageSplitFilter class]] ) {
+                        [filter setInputRotation:rotation atIndex:0];
+                    }
+                }
+                
+                [_movieDataInput addTarget:_currentFilterGroup];
+                [_currentFilterGroup addTarget:_filteredPreviewView];
+                
+                // draw the small preview view if enabled (taking screen scale into consideration)
+                if ( self.smallPreviewEnabled )
+                {
+                    [_currentFilterGroup addTarget:_filteredSmallPreviewView];
+                }
             }
         }
-        
-        // Tell spilt filter what percentage should be left and right filter
-        CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
-                                 self.filterOffset - (truncf(self.filterOffset)));
-        GPUImageSplitFilter *splitFilter = (GPUImageSplitFilter*)[_currentFilterGroup filterAtIndex:_currentFilterGroup.filterCount-1];
-        [splitFilter setOffset:filterPercent];
         
         runSynchronouslyOnVideoProcessingQueue(^{
             [_movieDataInput processMovieFrame:sampleBuffer];
