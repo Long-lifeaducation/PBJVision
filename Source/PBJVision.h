@@ -144,6 +144,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 @property (nonatomic) PBJMirroringMode mirroringMode;
 
+- (void)setupPreviewViews;
+
 // video output settings
 
 @property (nonatomic, copy) NSString *captureSessionPreset;
