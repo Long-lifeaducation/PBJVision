@@ -63,5 +63,6 @@
 // authorization status provides the opportunity to prompt the user for allowing capture device access
 - (void)mediaWriterDidObserveAudioAuthorizationStatusDenied:(PBJMediaWriter *)mediaWriter;
 - (void)mediaWriterDidObserveVideoAuthorizationStatusDenied:(PBJMediaWriter *)mediaWriter;
+- (void)mediaWriterDidObserveAssetWriterFailed:(PBJMediaWriter *)mediaWriter;
 
 @end

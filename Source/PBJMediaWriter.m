@@ -269,6 +269,11 @@
     
     if ( _assetWriter.status == AVAssetWriterStatusFailed ) {
         DLog(@"writer failure, (%@)", _assetWriter.error.localizedDescription);
+        
+        if ([_delegate respondsToSelector:@selector(mediaWriterDidObserveAssetWriterFailed:)]) {
+            [_delegate mediaWriterDidObserveAssetWriterFailed:self];
+        }
+        
         return;
     }
 	

@@ -2219,10 +2219,14 @@ typedef void (^PBJVisionBlock)();
             
             // need to start writing so we have the pixel buffer pool alloc'd and ready...
             if (_flags.recording && !_flags.videoWritten) {
-                [_mediaWriter startWritingAtTime:time];
-                // TODO what if it doesn't start??
-                
                 _recordedFrameCount = 0;
+                
+                if(![_mediaWriter startWritingAtTime:time]) {
+                    if ([_delegate respondsToSelector:@selector(visionCaptureDidFail:)]) {
+                        [_delegate visionCaptureDidFail:self];
+                    }
+                    return;
+                }
             }
             
 //            if (CMTIME_IS_VALID(_audioRecordOffset)) {
@@ -2601,6 +2605,13 @@ typedef void (^PBJVisionBlock)();
 
 - (void)mediaWriterDidObserveVideoAuthorizationStatusDenied:(PBJMediaWriter *)mediaWriter
 {
+}
+
+- (void)mediaWriterDidObserveAssetWriterFailed:(PBJMediaWriter *)mediaWriter
+{
+    if ([_delegate respondsToSelector:@selector(visionCaptureDidFail:)]) {
+        [_delegate visionCaptureDidFail:self];
+    }
 }
 
 #pragma mark - sample buffer processing
