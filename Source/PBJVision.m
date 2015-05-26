@@ -2609,9 +2609,12 @@ typedef void (^PBJVisionBlock)();
 
 - (void)mediaWriterDidObserveAssetWriterFailed:(PBJMediaWriter *)mediaWriter
 {
-    if ([_delegate respondsToSelector:@selector(visionCaptureDidFail:)]) {
-        [_delegate visionCaptureDidFail:self];
-    }
+    [self _executeBlockOnMainQueue:^{
+        if ([_delegate respondsToSelector:@selector(visionCaptureDidFail:)]) {
+            [_delegate visionCaptureDidFail:self];
+        }
+    }];
+    
 }
 
 #pragma mark - sample buffer processing
