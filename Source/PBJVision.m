@@ -39,6 +39,8 @@
 #import <client-magic/MagicLogger.h>
 #import <client-magic/UIDevice+Magic.h> 
 
+#import "VideoFrameProfiler.h"
+
 #import "GPUImage.h"
 
 #define LOG_VISION 1
@@ -1868,6 +1870,8 @@ typedef void (^PBJVisionBlock)();
 
 - (void)startVideoCapture
 {
+    [[VideoFrameProfiler sharedProfiler] reset];
+    
     if (!_mediaWriter) {
         [self setupVideoCapture];
     }
@@ -1968,10 +1972,13 @@ typedef void (^PBJVisionBlock)();
             _lastTimestamp = kCMTimeInvalid;
             _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
             _flags.interrupted = NO;
-            
             NSString *path = [_mediaWriter.outputURL path];
             NSError *error = [_mediaWriter error];
             _mediaWriter = nil;
+
+            NSString *logPath = [path stringByAppendingPathExtension:@".vidlog"];
+            [[VideoFrameProfiler sharedProfiler] writeVideoLog:logPath];
+            
             
             [self _enqueueBlockOnMainQueue:^{
                 NSMutableDictionary *videoDict = [[NSMutableDictionary alloc] init];
@@ -2001,6 +2008,10 @@ typedef void (^PBJVisionBlock)();
         _flags.paused = NO;
         
         NSURL *outputURL = _mediaWriter.outputURL;
+        
+        // write the log anyways
+        NSString *logPath = [[outputURL path] stringByAppendingPathExtension:@"vidlog"];
+        [[VideoFrameProfiler sharedProfiler] writeVideoLog:logPath];
         
         void (^finishWritingCompletionHandler)(void) = ^{
             _lastTimestamp = kCMTimeInvalid;
@@ -2658,6 +2669,9 @@ typedef void (^PBJVisionBlock)();
 // processing is done on the GPU, operation WAY more efficient than converting on the CPU
 - (CVPixelBufferRef)_processSampleBuffer:(CMSampleBufferRef)sampleBuffer
 {
+    VideoFrameProfiler *prof = [VideoFrameProfiler sharedProfiler];
+    [prof beginNextFrame];
+    
     if (!_context || !_videoTextureCache) {
         return NULL;
     }
@@ -2665,6 +2679,7 @@ typedef void (^PBJVisionBlock)();
     // convert to CV image buffer and lock the address to guarantee memory stays available
     CVImageBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
     if (CVPixelBufferLockBaseAddress(imageBuffer, 0) != kCVReturnSuccess) {
+        [prof addFrameEvent:@"lock-buffer"];
         return NULL;
     }
     
@@ -2707,7 +2722,9 @@ typedef void (^PBJVisionBlock)();
     if ( _mediaWriter.videoReady ) {
         CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
         if ( !err && renderedOutputPixelBuffer ) {
+            [prof addFrameEvent:@"ci-crop-begin"];
             [_ciContext render:cropImage toCVPixelBuffer:renderedOutputPixelBuffer];
+            [prof addFrameEvent:@"ci-crop-end"];
         }
     }
     
@@ -2816,6 +2833,8 @@ typedef void (^PBJVisionBlock)();
         // draw to GLKView
         else
         {
+            [prof addFrameEvent:@"gldraw-begin"];
+            
             // determine rect for drawing by center cropping source rect based on preview aspect ratio
             CGSize previewSize = _previewView.layer.frame.size;
             CGFloat previewAspect = (previewSize.width  / previewSize.height);
@@ -2829,6 +2848,7 @@ typedef void (^PBJVisionBlock)();
             previewBounds.size.height *= _screenScale;
             [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
             [_previewView display];
+            [prof addFrameEvent:@"gldraw-end"];
             
             
             // draw the small preview view if enabled (taking screen scale into consideration)
@@ -2853,6 +2873,7 @@ typedef void (^PBJVisionBlock)();
     
     // we are done with image buffer so unlock it before returning
     CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
+    [prof addFrameEvent:@"unlock-buffer"];
     
     return renderedOutputPixelBuffer;
 }
