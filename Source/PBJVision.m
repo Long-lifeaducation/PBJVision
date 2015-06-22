@@ -814,7 +814,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         _minDisplayDuration = CMTimeMake(1, 15);
 
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationWillEnterForeground:) name:@"UIApplicationWillEnterForegroundNotification" object:[UIApplication sharedApplication]];
-        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidEnterBackground:) name:@"UIApplicationDidEnterBackgroundNotification" object:[UIApplication sharedApplication]];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidEnterBackground:) name:@"UIApplicationWillResignActiveNotification" object:[UIApplication sharedApplication]];
         
         _filterManager = [[VideoFilterManager alloc] init];
     }
@@ -1332,6 +1332,9 @@ typedef void (^PBJVisionBlock)();
 
 - (void)startPreview
 {
+    if (_flags.previewRunning)
+        return;
+    
     [self _enqueueBlockOnCaptureVideoQueue:^{
         [self clearPreviewView];
         
@@ -1369,15 +1372,23 @@ typedef void (^PBJVisionBlock)();
             }];
             DLog(@"capture session running");
         }
-        _flags.previewRunning = YES;
     }];
+    
+    _flags.previewRunning = YES;
 }
 
 - (void)stopPreview
 {
+    
+    if (!_flags.previewRunning)
+        return;
+    
+    DLog(@"Stop Preview");
+    
+    [_movieDataInput removeTarget:_currentFilterGroup];
+    [_currentFilterGroup removeAllTargets];
+    
     [self _enqueueBlockOnCaptureSessionQueue:^{
-        if (!_flags.previewRunning)
-            return;
 
         if (_previewLayer)
             _previewLayer.connection.enabled = YES;
@@ -1391,8 +1402,9 @@ typedef void (^PBJVisionBlock)();
             }
         }];
         DLog(@"capture session stopped");
-        _flags.previewRunning = NO;
     }];
+    
+    _flags.previewRunning = NO;
 }
 
 - (void)unfreezePreview
@@ -2350,7 +2362,8 @@ typedef void (^PBJVisionBlock)();
 {
     DLog(@"applicationWillEnterForeground");
     [self _enqueueBlockOnCaptureSessionQueue:^{
-        if (!_flags.previewRunning)
+        // don't restart preview if user entered background while singing
+        if (_flags.videoWritten)
             return;
         
         [self _enqueueBlockOnMainQueue:^{
@@ -2367,9 +2380,6 @@ typedef void (^PBJVisionBlock)();
 
     if (_flags.previewRunning) {
         [self stopPreview];
-        [self _enqueueBlockOnCaptureSessionQueue:^{
-            _flags.previewRunning = YES;
-        }];
     }
 }
 
@@ -2388,7 +2398,7 @@ typedef void (^PBJVisionBlock)();
                     {
                         DLog(@"error media services were reset");
                         [self _destroyCamera];
-                        if (_flags.previewRunning)
+                        if (!_flags.previewRunning)
                             [self startPreview];
                         break;
                     }
@@ -2401,7 +2411,7 @@ typedef void (^PBJVisionBlock)();
                     {
                         DLog(@"error media services failed, error (%@)", error);
                         [self _destroyCamera];
-                        if (_flags.previewRunning)
+                        if (!_flags.previewRunning)
                             [self startPreview];
                         break;
                     }
@@ -2715,72 +2725,49 @@ typedef void (^PBJVisionBlock)();
     if(!_filteredPreviewView && !_previewView)
     {
         [self setupPreviewViews];
+        
+        
     }
     
-    // draw filtered image into preview view if enough time has past since last drawing
-    CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-    if (CMTIME_IS_INVALID(_lastVideoDisplayTimestamp) ||
-        CMTIME_COMPARE_INLINE(_lastVideoDisplayTimestamp, >, currentTimestamp) ||
-        CMTIME_COMPARE_INLINE(CMTimeSubtract(currentTimestamp, _lastVideoDisplayTimestamp), >, _minDisplayDuration))
+    // this check needs to be here to make sure we don't draw to the screen when app is entering background
+    if(_flags.previewRunning)
     {
-        // Draw to GPUImageView
-        if(_isFilterEnabled)
+        // draw filtered image into preview view if enough time has past since last drawing
+        CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+        if (CMTIME_IS_INVALID(_lastVideoDisplayTimestamp) ||
+            CMTIME_COMPARE_INLINE(_lastVideoDisplayTimestamp, >, currentTimestamp) ||
+            CMTIME_COMPARE_INLINE(CMTimeSubtract(currentTimestamp, _lastVideoDisplayTimestamp), >, _minDisplayDuration))
         {
-            if(!_movieDataInput)
+            // Draw to GPUImageView
+            if(_isFilterEnabled)
             {
-                _movieDataInput = [[GPUImageMovie alloc] init];
-                [_movieDataInput yuvConversionSetup];
-            }
-            
-            if(_isSwipeEnabled)
-            {
-                // Get filter based on scrollview offset
-                GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupAtIndex:self.filterOffset];
-                
-                // Check if the filter needs to be changed
-                if (![[_movieDataInput targets] containsObject:newFilterGroup])
+                if(!_movieDataInput)
                 {
-                    [_movieDataInput removeTarget:_currentFilterGroup];
-                    [_currentFilterGroup removeAllTargets];
+                    _movieDataInput = [[GPUImageMovie alloc] init];
+                    [_movieDataInput yuvConversionSetup];
+                }
+                
+                if(_isSwipeEnabled)
+                {
+                    // Get filter based on scrollview offset
+                    GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupAtIndex:self.filterOffset];
                     
-                    _currentFilterGroup = newFilterGroup;
-                    [_movieDataInput addTarget:_currentFilterGroup];
-                    [_currentFilterGroup addTarget:_filteredPreviewView];
-                    
-                    // draw the small preview view if enabled (taking screen scale into consideration)
-                    if ( self.smallPreviewEnabled )
+                    // Check if the filter needs to be changed
+                    if (![[_movieDataInput targets] containsObject:newFilterGroup])
                     {
-                        [_currentFilterGroup addTarget:_filteredSmallPreviewView];
+                        [_movieDataInput removeTarget:_currentFilterGroup];
+                        [_currentFilterGroup removeAllTargets];
+                        
+                        _currentFilterGroup = newFilterGroup;
+                        [_movieDataInput addTarget:_currentFilterGroup];
+                        [_currentFilterGroup addTarget:_filteredPreviewView];
+                        
+                        // draw the small preview view if enabled (taking screen scale into consideration)
+                        if ( self.smallPreviewEnabled )
+                        {
+                            [_currentFilterGroup addTarget:_filteredSmallPreviewView];
+                        }
                     }
-                }
-                
-                // determine rotation used for mirroring
-                GPUImageRotationMode rotation = (_cameraDevice == PBJCameraDeviceFront ?
-                                                 kGPUImageFlipHorizonal : kGPUImageNoRotation);
-                
-                // to handle mirroring with GPUImage, we just need to horizontal flip the
-                // initial filters in the chain (as long as they aren't split filters). This
-                // will flip image for left and right side of split, without flipping split direction
-                for ( int i = 0; i < _currentFilterGroup.initialFilters.count; i++ )
-                {
-                    GPUImageFilter *filter = (GPUImageFilter *)_currentFilterGroup.initialFilters[i];
-                    if ( ![filter isKindOfClass:[GPUImageSplitFilter class]] ) {
-                        [filter setInputRotation:rotation atIndex:0];
-                    }
-                }
-                
-                // Tell spilt filter what percentage should be left and right filter
-                CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
-                                         self.filterOffset - (truncf(self.filterOffset)));
-                GPUImageSplitFilter *splitFilter = (GPUImageSplitFilter*)[_currentFilterGroup filterAtIndex:_currentFilterGroup.filterCount-1];
-                [splitFilter setOffset:filterPercent];
-            }
-            
-            else
-            {
-                if(!_currentFilterGroup)
-                {
-                    _currentFilterGroup = [_filterManager splitFilterGroupAtIndex:_filterOffset];
                     
                     // determine rotation used for mirroring
                     GPUImageRotationMode rotation = (_cameraDevice == PBJCameraDeviceFront ?
@@ -2797,58 +2784,94 @@ typedef void (^PBJVisionBlock)();
                         }
                     }
                     
-                    [_movieDataInput addTarget:_currentFilterGroup];
-                    [_currentFilterGroup addTarget:_filteredPreviewView];
-                    
-                    // draw the small preview view if enabled (taking screen scale into consideration)
-                    if ( self.smallPreviewEnabled )
+                    // Tell spilt filter what percentage should be left and right filter
+                    CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
+                                             self.filterOffset - (truncf(self.filterOffset)));
+                    GPUImageSplitFilter *splitFilter = (GPUImageSplitFilter*)[_currentFilterGroup filterAtIndex:_currentFilterGroup.filterCount-1];
+                    [splitFilter setOffset:filterPercent];
+                }
+                
+                else
+                {
+                    if(!_currentFilterGroup)
                     {
-                        [_currentFilterGroup addTarget:_filteredSmallPreviewView];
+                        _currentFilterGroup = [_filterManager splitFilterGroupAtIndex:_filterOffset];
+                        
+                        // determine rotation used for mirroring
+                        GPUImageRotationMode rotation = (_cameraDevice == PBJCameraDeviceFront ?
+                                                         kGPUImageFlipHorizonal : kGPUImageNoRotation);
+                        
+                        // to handle mirroring with GPUImage, we just need to horizontal flip the
+                        // initial filters in the chain (as long as they aren't split filters). This
+                        // will flip image for left and right side of split, without flipping split direction
+                        for ( int i = 0; i < _currentFilterGroup.initialFilters.count; i++ )
+                        {
+                            GPUImageFilter *filter = (GPUImageFilter *)_currentFilterGroup.initialFilters[i];
+                            if ( ![filter isKindOfClass:[GPUImageSplitFilter class]] ) {
+                                [filter setInputRotation:rotation atIndex:0];
+                            }
+                        }
+                        
+                        [_movieDataInput addTarget:_currentFilterGroup];
+                        [_currentFilterGroup addTarget:_filteredPreviewView];
+                        
+                        // draw the small preview view if enabled (taking screen scale into consideration)
+                        if ( self.smallPreviewEnabled )
+                        {
+                            [_currentFilterGroup addTarget:_filteredSmallPreviewView];
+                        }
                     }
+                }
+
+                runSynchronouslyOnVideoProcessingQueue(^{
+                    DLog(@"Start filter process");
+                    [_movieDataInput processMovieFrame:sampleBuffer];
+                    DLog(@"Filter process done!");
+                });
+            }
+            
+            // draw to GLKView
+            else
+            {
+                // determine rect for drawing by center cropping source rect based on preview aspect ratio
+                CGSize previewSize = _previewView.layer.frame.size;
+                CGFloat previewAspect = (previewSize.width  / previewSize.height);
+                CGRect drawRect = [self centerCropRect:sourceExtent toAspectRatio:previewAspect];
+                
+                // draw the regular preview view (taking screen scale into consideration)
+                [EAGLContext setCurrentContext:_context];
+                [_previewView bindDrawable];
+                CGRect previewBounds = CGRectMake(0, 0, previewSize.width, previewSize.height);
+                previewBounds.size.width *= _screenScale;
+                previewBounds.size.height *= _screenScale;
+                [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
+                [_previewView display];
+                
+                
+                // draw the small preview view if enabled (taking screen scale into consideration)
+                if ( self.smallPreviewEnabled )
+                {
+                    [EAGLContext setCurrentContext:_contextPreview];
+                    [_previewSmallView bindDrawable];
+                    CGSize smallPreviewSize = _previewSmallView.layer.frame.size;
+                    CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
+                    smallPreviewBounds.size.width *= _screenScale;
+                    smallPreviewBounds.size.height *= _screenScale;
+                    [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
+                    [_previewSmallView display];
                 }
             }
             
-            runSynchronouslyOnVideoProcessingQueue(^{
-                [_movieDataInput processMovieFrame:sampleBuffer];
-            });
+            _lastVideoDisplayTimestamp = currentTimestamp;
+            
+            //[self calculateFramerateAtTimestamp:currentTimestamp];
+            //NSLog(@"fps: %f", _frameRate);
         }
-        
-        // draw to GLKView
-        else
-        {
-            // determine rect for drawing by center cropping source rect based on preview aspect ratio
-            CGSize previewSize = _previewView.layer.frame.size;
-            CGFloat previewAspect = (previewSize.width  / previewSize.height);
-            CGRect drawRect = [self centerCropRect:sourceExtent toAspectRatio:previewAspect];
-            
-            // draw the regular preview view (taking screen scale into consideration)
-            [EAGLContext setCurrentContext:_context];
-            [_previewView bindDrawable];
-            CGRect previewBounds = CGRectMake(0, 0, previewSize.width, previewSize.height);
-            previewBounds.size.width *= _screenScale;
-            previewBounds.size.height *= _screenScale;
-            [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
-            [_previewView display];
-            
-            
-            // draw the small preview view if enabled (taking screen scale into consideration)
-            if ( self.smallPreviewEnabled )
-            {
-                [EAGLContext setCurrentContext:_contextPreview];
-                [_previewSmallView bindDrawable];
-                CGSize smallPreviewSize = _previewSmallView.layer.frame.size;
-                CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
-                smallPreviewBounds.size.width *= _screenScale;
-                smallPreviewBounds.size.height *= _screenScale;
-                [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
-                [_previewSmallView display];
-            }
-        }
-        
-        _lastVideoDisplayTimestamp = currentTimestamp;
-        
-        //[self calculateFramerateAtTimestamp:currentTimestamp];
-        //NSLog(@"fps: %f", _frameRate);
+    }
+    
+    else
+    {
+        DLog(@"PREVIEW NOT ENABLED!");
     }
     
     // we are done with image buffer so unlock it before returning
