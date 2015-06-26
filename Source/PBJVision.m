@@ -2824,9 +2824,7 @@ typedef void (^PBJVisionBlock)();
                 }
 
                 runSynchronouslyOnVideoProcessingQueue(^{
-                    DLog(@"Start filter process");
                     [_movieDataInput processMovieFrame:sampleBuffer];
-                    DLog(@"Filter process done!");
                 });
             }
             
