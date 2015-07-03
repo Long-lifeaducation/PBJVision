@@ -1332,9 +1332,6 @@ typedef void (^PBJVisionBlock)();
 
 - (void)startPreview
 {
-    if (_flags.previewRunning)
-        return;
-    
     [self _enqueueBlockOnCaptureVideoQueue:^{
         [self clearPreviewView];
         
@@ -2398,7 +2395,8 @@ typedef void (^PBJVisionBlock)();
                     {
                         DLog(@"error media services were reset");
                         [self _destroyCamera];
-                        if (!_flags.previewRunning)
+                        // if preview should be running let's attempt to restart
+                        if (_flags.previewRunning)
                             [self startPreview];
                         break;
                     }
@@ -2411,7 +2409,8 @@ typedef void (^PBJVisionBlock)();
                     {
                         DLog(@"error media services failed, error (%@)", error);
                         [self _destroyCamera];
-                        if (!_flags.previewRunning)
+                        // if preview should be running let's attempt to restart
+                        if (_flags.previewRunning)
                             [self startPreview];
                         break;
                     }
