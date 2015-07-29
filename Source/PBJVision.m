@@ -1983,6 +1983,12 @@ typedef void (^PBJVisionBlock)();
             _mediaWriter = nil;
             
             [self _enqueueBlockOnMainQueue:^{
+                // give delegate a chance to perform tasks/cleanup before capturedVideo
+                // delegate method is called
+                if ([_delegate respondsToSelector:@selector(visionWillEndVideoCapture:)]) {
+                    [_delegate visionWillEndVideoCapture:self];
+                }
+                
                 NSMutableDictionary *videoDict = [[NSMutableDictionary alloc] init];
                 if (path)
                     [videoDict setObject:path forKey:PBJVisionVideoPathKey];
