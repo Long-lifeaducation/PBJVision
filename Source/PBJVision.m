@@ -622,6 +622,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         if (supportingFormat) {
             NSError *error = nil;
             if ([_currentDevice lockForConfiguration:&error]) {
+                NSLog(@"** current device active format");
+                NSLog(@"** current device active format = %@", [_currentDevice activeFormat]);
+                NSLog(@"** current device active format ranges = %@ %@ %@", [_currentDevice activeFormat].mediaType, [_currentDevice activeFormat].formatDescription, supportingFormat.videoSupportedFrameRateRanges);
                 _currentDevice.activeVideoMinFrameDuration = fps;
                 _currentDevice.activeVideoMaxFrameDuration = fps;
                 _videoFrameRate = videoFrameRate;
