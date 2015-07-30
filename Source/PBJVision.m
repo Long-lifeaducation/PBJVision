@@ -379,7 +379,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     BOOL changeMode = (_cameraMode != cameraMode);
     BOOL changeOutputFormat = (_outputFormat != outputFormat);
     
-    DLog(@"change device (%d) mode (%d) format (%d)", changeDevice, changeMode, changeOutputFormat);
+    NSLog(@"** _setCameraMode being called; change device (%d) mode (%d) format (%d)", changeDevice, changeMode, changeOutputFormat);
+    NSLog(@"** callstack: %@", [NSThread callStackSymbols]);
     
     if (!changeMode && !changeDevice && !changeOutputFormat)
         return;
@@ -438,6 +439,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     
     [self _enqueueBlockOnCaptureSessionQueue:^{
         // camera is already setup, no need to call _setupCamera
+        NSLog(@"** calling _setupSession from _setCameraMode");
         [self _setupSession];
         
         [self _enqueueBlockOnMainQueue:^{
@@ -587,6 +589,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     }
 
     CMTime fps = CMTimeMake(1, (int32_t)videoFrameRate);
+    
+    NSLog(@"** setting video frame rate");
+    NSLog(@"** callstack: %@", [NSThread callStackSymbols]);
 
     if (floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_6_1) {
         
@@ -610,6 +615,10 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
             }
         }
         
+        NSLog(@"** set supporting format");
+        NSLog(@"** supporting format = %@", supportingFormat);
+        NSLog(@"** supporting format ranges = %@ %@ %@", supportingFormat.mediaType, supportingFormat.formatDescription, supportingFormat.videoSupportedFrameRateRanges);
+        
         if (supportingFormat) {
             NSError *error = nil;
             if ([_currentDevice lockForConfiguration:&error]) {
@@ -621,6 +630,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
                 DLog(@"error locking device for frame rate change (%@)", error);
             }
         }
+
         
         AVCaptureDeviceFormat *activeFormat = [_currentDevice activeFormat];
         NSLog(@"%@", activeFormat);
@@ -1344,6 +1354,8 @@ typedef void (^PBJVisionBlock)();
     
     [self _enqueueBlockOnCaptureSessionQueue:^{
         [self _setupCamera];
+        
+        NSLog(@"** calling _setupSession from startPreview");
         [self _setupSession];
         
         _lastVideoDisplayTimestamp = kCMTimeInvalid;
