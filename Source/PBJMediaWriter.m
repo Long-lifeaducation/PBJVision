@@ -287,9 +287,11 @@
 				if ([_assetWriterAudioInput appendSampleBuffer:sampleBuffer]) {
                     _audioTimestamp = timestamp;
 				} else {
-					DLog(@"writer error appending audio (%@)", _assetWriter.error);
+					NSLog(@"writer error appending audio (%@)", _assetWriter.error);
                 }
-			}
+			} else {
+                NSLog(@"not ready for more data!!!");
+            }
 		}
         
 	}

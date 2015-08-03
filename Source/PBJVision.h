@@ -239,6 +239,9 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 - (void)captureCurrentVideoThumbnail;
 - (void)captureVideoThumbnailAtFrame:(int64_t)frame;
+
+- (void)captureAudioSampleBuffer:(CMSampleBufferRef)sampleBuffer;
+
 - (void)captureVideoThumbnailAtTime:(Float64)seconds;
 
 @end

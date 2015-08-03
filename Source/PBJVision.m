@@ -670,7 +670,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
         _autoUpdatePreviewOrientation = YES;
         _autoFreezePreviewDuringCapture = YES;
-        _usesApplicationAudioSession = NO;
+        _usesApplicationAudioSession = YES;
 
         // Average bytes per second based on video dimensions
         // lower the bitRate, higher the compression
@@ -778,6 +778,7 @@ typedef void (^PBJVisionBlock)();
     if (_usesApplicationAudioSession) {
         _captureSession.usesApplicationAudioSession = YES;
     }
+    _captureSession.automaticallyConfiguresApplicationAudioSession = NO;
 
     // capture devices
     _captureDeviceFront = [PBJVisionUtilities captureDeviceForPosition:AVCaptureDevicePositionFront];
@@ -798,8 +799,8 @@ typedef void (^PBJVisionBlock)();
     }
     
     if (_cameraMode != PBJCameraModePhoto && _flags.audioCaptureEnabled) {
-        _captureDeviceAudio = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
-        _captureDeviceInputAudio = [AVCaptureDeviceInput deviceInputWithDevice:_captureDeviceAudio error:&error];
+//        _captureDeviceAudio = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];
+//        _captureDeviceInputAudio = [AVCaptureDeviceInput deviceInputWithDevice:_captureDeviceAudio error:&error];
 
         if (error) {
             DLog(@"error setting up audio input (%@)", error);
@@ -1009,13 +1010,13 @@ typedef void (^PBJVisionBlock)();
             case PBJCameraModeVideo:
             {
                 // audio input
-                if ([_captureSession canAddInput:_captureDeviceInputAudio]) {
-                    [_captureSession addInput:_captureDeviceInputAudio];
-                }
+//                if ([_captureSession canAddInput:_captureDeviceInputAudio]) {
+//                    [_captureSession addInput:_captureDeviceInputAudio];
+//                }
                 // audio output
-                if ([_captureSession canAddOutput:_captureOutputAudio]) {
-                    [_captureSession addOutput:_captureOutputAudio];
-                }
+//                if ([_captureSession canAddOutput:_captureOutputAudio]) {
+//                    [_captureSession addOutput:_captureOutputAudio];
+//                }
                 // vidja output
                 if ([_captureSession canAddOutput:_captureOutputVideo]) {
                     [_captureSession addOutput:_captureOutputVideo];
@@ -2132,6 +2133,14 @@ typedef void (^PBJVisionBlock)();
     }
 }
 
+
+- (void)captureAudioSampleBuffer:(CMSampleBufferRef)sampleBuffer
+{
+    [self _enqueueBlockOnCaptureVideoQueue:^{
+        [self captureOutput:nil didOutputSampleBuffer:sampleBuffer fromConnection:nil];
+    }];
+}
+
 #pragma mark - AVCaptureAudioDataOutputSampleBufferDelegate, AVCaptureVideoDataOutputSampleBufferDelegate
 
 - (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection
@@ -2236,7 +2245,12 @@ typedef void (^PBJVisionBlock)();
             }];
         
         } else if (!isVideo && _flags.videoWritten) {
-            
+
+
+//            NSLog(@"Writing audio, t=%f, d=%f",
+//                CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(bufferToWrite)),
+//                CMTimeGetSeconds(CMSampleBufferGetDuration(bufferToWrite)));
+
             [_mediaWriter writeSampleBuffer:bufferToWrite withMediaTypeVideo:isVideo];
             
             [self _enqueueBlockOnMainQueue:^{

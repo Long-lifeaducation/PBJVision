@@ -43,6 +43,9 @@
 		06C216CF1A4A924700C83065 /* CoreImage.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 06C216CE1A4A924700C83065 /* CoreImage.framework */; };
 		06DF60741896B535000870C9 /* PBJMediaWriter.m in Sources */ = {isa = PBXBuildFile; fileRef = 06DF60731896B535000870C9 /* PBJMediaWriter.m */; };
 		06FEB59F18F5C15600AFD4DB /* PBJGLProgram.m in Sources */ = {isa = PBXBuildFile; fileRef = 06FEB59E18F5C15600AFD4DB /* PBJGLProgram.m */; };
+		26AF626E1B4A5CB400068DD5 /* SMALLer.m in Sources */ = {isa = PBXBuildFile; fileRef = 26AF626D1B4A5CB400068DD5 /* SMALLer.m */; };
+		26AF62711B4A5FE600068DD5 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 26AF626F1B4A5FE600068DD5 /* AudioToolbox.framework */; };
+		EBF7EE48D9EDCFA1FB357C82 /* MediaPlayer.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EBF7E4B4E1066C2A3BE90EFD /* MediaPlayer.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -96,6 +99,10 @@
 		06DF60731896B535000870C9 /* PBJMediaWriter.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = PBJMediaWriter.m; path = ../Source/PBJMediaWriter.m; sourceTree = "<group>"; };
 		06FEB59D18F5C15600AFD4DB /* PBJGLProgram.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = PBJGLProgram.h; path = ../Source/PBJGLProgram.h; sourceTree = "<group>"; };
 		06FEB59E18F5C15600AFD4DB /* PBJGLProgram.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = PBJGLProgram.m; path = ../Source/PBJGLProgram.m; sourceTree = "<group>"; };
+		26AF626C1B4A5CB400068DD5 /* SMALLer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SMALLer.h; sourceTree = "<group>"; };
+		26AF626D1B4A5CB400068DD5 /* SMALLer.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SMALLer.m; sourceTree = "<group>"; };
+		26AF626F1B4A5FE600068DD5 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
+		EBF7E4B4E1066C2A3BE90EFD /* MediaPlayer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MediaPlayer.framework; path = System/Library/Frameworks/MediaPlayer.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -103,6 +110,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				26AF62711B4A5FE600068DD5 /* AudioToolbox.framework in Frameworks */,
 				06BB5D511AAA50040023C3FC /* QuartzCore.framework in Frameworks */,
 				06C216CF1A4A924700C83065 /* CoreImage.framework in Frameworks */,
 				067D52F817D8574200541B5E /* GLKit.framework in Frameworks */,
@@ -116,6 +124,7 @@
 				0683D1C4179F2E1700EE66D6 /* CoreGraphics.framework in Frameworks */,
 				0683D1C6179F2E1700EE66D6 /* UIKit.framework in Frameworks */,
 				0683D1C2179F2E1700EE66D6 /* Foundation.framework in Frameworks */,
+				EBF7EE48D9EDCFA1FB357C82 /* MediaPlayer.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -169,6 +178,7 @@
 		0683D1C0179F2E1700EE66D6 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				26AF626F1B4A5FE600068DD5 /* AudioToolbox.framework */,
 				06BB5D501AAA50040023C3FC /* QuartzCore.framework */,
 				06C216CE1A4A924700C83065 /* CoreImage.framework */,
 				060F7B0E179F459900E27091 /* AssetsLibrary.framework */,
@@ -182,6 +192,7 @@
 				06B7D02D179F330E00F3F527 /* MobileCoreServices.framework */,
 				0624D09917D43D5D00665930 /* OpenGLES.framework */,
 				0683D1C5179F2E1700EE66D6 /* UIKit.framework */,
+				EBF7E4B4E1066C2A3BE90EFD /* MediaPlayer.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -191,6 +202,8 @@
 			children = (
 				0683D1D0179F2E1700EE66D6 /* PBJAppDelegate.h */,
 				0683D1D1179F2E1700EE66D6 /* PBJAppDelegate.m */,
+				26AF626C1B4A5CB400068DD5 /* SMALLer.h */,
+				26AF626D1B4A5CB400068DD5 /* SMALLer.m */,
 				0683D1D6179F2E1700EE66D6 /* PBJViewController.h */,
 				0683D1D7179F2E1700EE66D6 /* PBJViewController.m */,
 				061858EE1846B06400DEC416 /* PBJFocusView.h */,
@@ -328,6 +341,7 @@
 				06B7D01E179F2E7700F3F527 /* PBJVision.m in Sources */,
 				06FEB59F18F5C15600AFD4DB /* PBJGLProgram.m in Sources */,
 				06B7D01F179F2E7700F3F527 /* PBJVisionUtilities.m in Sources */,
+				26AF626E1B4A5CB400068DD5 /* SMALLer.m in Sources */,
 				0683D1D2179F2E1700EE66D6 /* PBJAppDelegate.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -368,6 +382,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
 			};
 			name = Debug;
 		};
@@ -377,6 +392,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_LAUNCHIMAGE_NAME = LaunchImage;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
 			};
 			name = Release;
 		};

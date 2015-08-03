@@ -29,6 +29,7 @@
 
 #import "PBJVision.h"
 #import "PBJVisionUtilities.h"
+#import "SMALLer.h"
 
 #import <AssetsLibrary/AssetsLibrary.h>
 #import <GLKit/GLKit.h>
@@ -92,7 +93,9 @@
 
 @end
 
-@implementation PBJViewController
+@implementation PBJViewController {
+    SMALLer *_smaller;
+}
 
 #pragma mark - UIViewController
 
@@ -116,6 +119,14 @@
 - (void)viewDidLoad
 {
     [super viewDidLoad];
+
+    _smaller = [[SMALLer alloc] initWithSampleRate:44100 bufferSize:256 callback:nil];
+    [_smaller useMicInput:YES];
+    _smaller.initializeAudioUnit = YES;
+    _smaller.sampleBufferCallbackBlock = ^(CMSampleBufferRef sampleBuffer) {
+        [[PBJVision sharedInstance] captureAudioSampleBuffer:sampleBuffer];
+    };
+    [_smaller startAudioSession];
 
     self.view.backgroundColor = [UIColor blackColor];
     self.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
@@ -247,6 +258,7 @@
     _onionButton.imageView.frame = _onionButton.bounds;
     [_onionButton addTarget:self action:@selector(_handleOnionSkinningButton:) forControlEvents:UIControlEventTouchUpInside];
     [_captureDock addSubview:_onionButton];
+
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -337,8 +349,10 @@
     vision.focusMode = PBJFocusModeContinuousAutoFocus;
     vision.outputFormat = PBJOutputFormatSquare;
     vision.videoRenderingEnabled = YES;
-    vision.additionalCompressionProperties = @{AVVideoProfileLevelKey : AVVideoProfileLevelH264Baseline30}; // AVVideoProfileLevelKey requires specific captureSessionPreset
-    
+    // vision.additionalCompressionProperties = @{AVVideoProfileLevelKey : AVVideoProfileLevelH264Baseline30}; // AVVideoProfileLevelKey requires specific captureSessionPreset
+    vision.additionalCompressionProperties = @{AVVideoProfileLevelKey : AVVideoProfileLevelH264Baseline30};
+    vision.videoBitRate = PBJVideoBitRate640x480;
+
     // specify a maximum duration with the following property
     // vision.maximumCaptureDuration = CMTimeMakeWithSeconds(5, 600); // ~ 5 seconds
 }
@@ -662,7 +676,15 @@
     
     NSString *videoPath = [_currentVideo  objectForKey:PBJVisionVideoPathKey];
     [_assetLibrary writeVideoAtPathToSavedPhotosAlbum:[NSURL URLWithString:videoPath] completionBlock:^(NSURL *assetURL, NSError *error1) {
-        UIAlertView *alert = [[UIAlertView alloc] initWithTitle: @"Video Saved!" message: @"Saved to the camera roll."
+        float videoBitrate = 0;
+        AVAsset *asset = [AVAsset assetWithURL:assetURL];
+        for(AVAssetTrack *track in asset.tracks) {
+            if ([track.mediaType isEqual:AVMediaTypeVideo]) {
+                videoBitrate = track.estimatedDataRate;
+            }
+        }
+        NSString *message = [NSString stringWithFormat:@"Saved @ %.0f kbytes/s", videoBitrate/1000.0];
+        UIAlertView *alert = [[UIAlertView alloc] initWithTitle: @"Video Saved!" message: message
                                                        delegate:self
                                               cancelButtonTitle:nil
                                               otherButtonTitles:@"OK", nil];
