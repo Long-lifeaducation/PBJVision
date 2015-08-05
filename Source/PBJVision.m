@@ -2133,14 +2133,6 @@ typedef void (^PBJVisionBlock)();
     }
 }
 
-
-- (void)captureAudioSampleBuffer:(CMSampleBufferRef)sampleBuffer
-{
-    [self _enqueueBlockOnCaptureVideoQueue:^{
-        [self captureOutput:nil didOutputSampleBuffer:sampleBuffer fromConnection:nil];
-    }];
-}
-
 #pragma mark - AVCaptureAudioDataOutputSampleBufferDelegate, AVCaptureVideoDataOutputSampleBufferDelegate
 
 - (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection
