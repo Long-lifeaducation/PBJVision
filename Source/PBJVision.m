@@ -2364,15 +2364,7 @@ typedef void (^PBJVisionBlock)();
 - (void)_applicationWillEnterForeground:(NSNotification *)notification
 {
     DLog(@"applicationWillEnterForeground");
-    [self _enqueueBlockOnCaptureSessionQueue:^{
-        // don't restart preview if user entered background while singing
-        if (_flags.videoWritten)
-            return;
-        
-        [self _enqueueBlockOnMainQueue:^{
-            [self startPreview];
-        }];
-    }];
+	// logic for handling app foregrounding has moved into SingingViewController (better place for it)
 }
 
 - (void)_applicationDidEnterBackground:(NSNotification *)notification
