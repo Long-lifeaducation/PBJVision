@@ -38,6 +38,9 @@
 
 @interface PBJMediaWriter ()
 {
+    __weak id <PBJMediaWriterDelegate> _delegate;
+    dispatch_queue_t _delegateQueue;
+
     AVAssetWriter *_assetWriter;
 	AVAssetWriterInput *_assetWriterAudioIn;
 	AVAssetWriterInput *_assetWriterVideoIn;
@@ -45,6 +48,11 @@
     
     NSURL *_outputURL;
     
+    NSDictionary *_videoSettings;
+    NSDictionary *_audioSettings;
+    CMFormatDescriptionRef _audioTrackSourceFormatDescription;
+    CMFormatDescriptionRef _videoTrackSourceFormatDescription;
+
     CMTime _audioTimestamp;
     CMTime _videoTimestamp;
     
@@ -57,7 +65,6 @@
 @implementation PBJMediaWriter
 
 @synthesize outputURL = _outputURL;
-@synthesize delegate = _delegate;
 
 @synthesize audioTimestamp = _audioTimestamp;
 @synthesize videoTimestamp = _videoTimestamp;
@@ -77,6 +84,32 @@
 - (NSError *)error
 {
     return _assetWriter.error;
+}
+
+- (id<PBJMediaWriterDelegate>)delegate
+{
+    id <PBJMediaWriterDelegate> delegate = nil;
+    @synchronized(self)
+    {
+        delegate = _delegate;
+    }
+    return delegate;
+}
+
+- (void)setDelegate:(id<PBJMediaWriterDelegate>)delegate callbackQueue:(dispatch_queue_t)delegateCallbackQueue;
+{
+
+     // debug
+     if (_delegate && (delegateCallbackQueue == NULL))
+     {
+        //@throw [NSException exceptionWithName:NSInvalidArgumentException reason:@"Caller must provide a delegateCallbackQueue" userInfo:nil];
+     }
+
+    @synchronized(self)
+    {
+        _delegate = delegate;
+        _delegateQueue = delegateCallbackQueue;
+    }
 }
 
 #pragma mark - init
@@ -152,6 +185,24 @@
 
 #pragma mark - sample buffer setup
 
+- (void)addAudioTrackWithFormatDescription:(CMFormatDescriptionRef)formatDescription settings:(NSDictionary *)audioSettings
+{
+    @synchronized(self)
+    {
+        _audioTrackSourceFormatDescription = (CMFormatDescriptionRef)CFRetain( formatDescription );
+        _audioSettings = [audioSettings copy];
+    }
+}
+
+- (void)addVideoTrackWithFormatDescription:(CMFormatDescriptionRef)formatDescription settings:(NSDictionary *)videoSettings
+{
+    @synchronized(self)
+    {
+        _videoTrackSourceFormatDescription = (CMFormatDescriptionRef)CFRetain( formatDescription );
+        _videoSettings = [videoSettings copy];
+    }
+}
+
 - (BOOL)setupAudioOutputDeviceWithSettings:(NSDictionary *)audioSettings
 {
     //HACK
@@ -185,6 +236,7 @@
 
 - (BOOL)setupVideoOutputDeviceWithSettings:(NSDictionary *)videoSettings
 {
+    BOOL success = NO;
 	if ([_assetWriter canApplyOutputSettings:videoSettings forMediaType:AVMediaTypeVideo]) {
     
 		_assetWriterVideoIn = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo outputSettings:videoSettings];
@@ -210,7 +262,7 @@
 
 		if ([_assetWriter canAddInput:_assetWriterVideoIn]) {
 			[_assetWriter addInput:_assetWriterVideoIn];
-            _videoReady = YES;
+            success = YES;
 		} else {
 			DLog(@"couldn't add asset writer video input");
 		}
@@ -221,7 +273,57 @@
         
 	}
     
-    return _videoReady;
+    return success;
+}
+
+- (void)prepareToRecord
+{
+    /*
+    @synchronized(self)
+    {
+        // TODO, check state
+    }
+     */
+
+
+    dispatch_async( dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_LOW, 0 ), ^{
+
+        @autoreleasepool
+        {
+            [self setupVideoOutputDeviceWithSettings:_videoSettings];
+            [self setupAudioOutputDeviceWithSettings:_audioSettings];
+
+            BOOL success = [_assetWriter startWriting];
+            if (!success)
+            {
+                dispatch_async( _delegateQueue, ^{
+
+                    @autoreleasepool
+                    {
+                        if ([_delegate respondsToSelector:@selector(mediaWriterDidObserveAssetWriterFailed:)]) {
+                            [_delegate mediaWriterDidObserveAssetWriterFailed:self];
+                        }
+                    }
+                } );
+            }
+            else
+            {
+                // we're ready to start recording
+                _videoReady = YES;
+
+                dispatch_async( _delegateQueue, ^{
+
+                    @autoreleasepool
+                    {
+                        if ([_delegate respondsToSelector:@selector(mediaWriterDidFinishPreparing:)]) {
+                            [_delegate mediaWriterDidFinishPreparing:self];
+                        }
+                    }
+                } );
+            }
+
+        }
+    } );
 }
 
 #pragma mark - 
@@ -242,8 +344,8 @@
 {
     DLog(@"about to start writing... (%lld %d)", startTime.value, startTime.timescale);
     BOOL didStart = NO;
-    if ( _assetWriter.status == AVAssetWriterStatusUnknown ) {
-        didStart = [_assetWriter startWriting];
+    if ( _assetWriter.status == AVAssetWriterStatusWriting ) {
+        didStart = YES;
         if (didStart) {
             [_assetWriter startSessionAtSourceTime:startTime];
             _videoTimestamp = startTime;
@@ -333,5 +435,19 @@
     _videoReady = NO;    
 }
 
+#pragma mark - dw
+
+- (void)dealloc
+{
+    if ( _audioTrackSourceFormatDescription )
+    {
+        CFRelease( _audioTrackSourceFormatDescription );
+    }
+
+    if ( _videoTrackSourceFormatDescription )
+    {
+        CFRelease( _videoTrackSourceFormatDescription );
+    }
+}
 
 @end

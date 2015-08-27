@@ -210,6 +210,10 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @property (nonatomic, strong) GPUImageFilterGroup *currentFilterGroup;
 @property (nonatomic, strong) VideoFilterManager *filterManager;
 
+
+@property (nonatomic, retain) __attribute__((NSObject)) CMFormatDescriptionRef outputVideoFormatDescription;
+@property (nonatomic, retain) __attribute__((NSObject)) CMFormatDescriptionRef outputAudioFormatDescription;
+
 @end
 
 
@@ -832,6 +836,15 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         CFRelease(_videoTextureCache);
         _videoTextureCache = NULL;
     }
+    
+    if ( _outputVideoFormatDescription ) {
+        CFRelease( _outputVideoFormatDescription );
+    }
+    
+    if ( _outputAudioFormatDescription ) {
+        CFRelease( _outputAudioFormatDescription );
+    }
+    
     
     [self _destroyGL];
     [self _destroyCamera];
@@ -1866,12 +1879,19 @@ typedef void (^PBJVisionBlock)();
     if (_mediaWriter)
         _mediaWriter.delegate = nil;
     
-    _mediaWriter = [[PBJMediaWriter alloc] initWithOutputURL:outputURL];
-    _mediaWriter.delegate = self;
     
+    _mediaWriter = [[PBJMediaWriter alloc] initWithOutputURL:outputURL];
+
+    dispatch_queue_t callbackQueue = dispatch_queue_create( "PBJVisionMediaWriterCallback", DISPATCH_QUEUE_SERIAL );
+    [_mediaWriter setDelegate:self callbackQueue:callbackQueue];
+
     AVCaptureConnection *videoConnection = [_captureOutputVideo connectionWithMediaType:AVMediaTypeVideo];
     [self _setOrientationForConnection:videoConnection];
-    
+
+    [self _setupMediaWriterAudioInputWithFormatDescription:_outputAudioFormatDescription];
+    [self _setupMediaWriterVideoInputWithFormatDescription:_outputVideoFormatDescription];
+    [_mediaWriter prepareToRecord];
+
     _flags.videoWritten = NO;
 }
 
@@ -2044,16 +2064,21 @@ typedef void (^PBJVisionBlock)();
     }];
 }
 
+#pragma mark - video dw
+
+- (void)_setupVideoWithFormat:(CMFormatDescriptionRef)inputFormatDescription
+{
+    self.outputVideoFormatDescription = inputFormatDescription;
+}
+
 #pragma mark - sample buffer setup
 
-- (BOOL)_setupMediaWriterAudioInputWithSampleBuffer:(CMSampleBufferRef)sampleBuffer
+- (void)_setupMediaWriterAudioInputWithFormatDescription:(CMFormatDescriptionRef)formatDescription
 {
-    CMFormatDescriptionRef formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer);
-
 	const AudioStreamBasicDescription *asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription);
     if (!asbd) {
         DLog(@"audio stream description used with non-audio format description");
-        return NO;
+        return;
     }
     
 	unsigned int channels = asbd->mChannelsPerFrame;
@@ -2071,12 +2096,12 @@ typedef void (^PBJVisionBlock)();
                                                 AVEncoderBitRateKey : @(_audioBitRate),
                                                 AVChannelLayoutKey : currentChannelLayoutData };
 
-    return [_mediaWriter setupAudioOutputDeviceWithSettings:audioCompressionSettings];
+    [_mediaWriter addAudioTrackWithFormatDescription:formatDescription settings:audioCompressionSettings];
 }
 
-- (BOOL)_setupMediaWriterVideoInputWithSampleBuffer:(CMSampleBufferRef)sampleBuffer
+- (void)_setupMediaWriterVideoInputWithFormatDescription:(CMFormatDescriptionRef)formatDescription
 {
-    CMFormatDescriptionRef formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer);
+
 	CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription);
     
     CMVideoDimensions videoDimensions = dimensions;
@@ -2128,7 +2153,7 @@ typedef void (^PBJVisionBlock)();
                                      AVVideoHeightKey : @(videoDimensions.height),
                                      AVVideoCompressionPropertiesKey : compressionSettings };
     
-    return [_mediaWriter setupVideoOutputDeviceWithSettings:videoSettings];
+    [_mediaWriter addVideoTrackWithFormatDescription:formatDescription settings:videoSettings];
 }
 
 #pragma mark - AVCaptureAudioDataOutputSampleBufferDelegate, AVCaptureVideoDataOutputSampleBufferDelegate
@@ -2152,17 +2177,19 @@ typedef void (^PBJVisionBlock)();
     BOOL isAudio = (connection == [_captureOutputAudio connectionWithMediaType:AVMediaTypeAudio]);
     BOOL isVideo = (connection == [_captureOutputVideo connectionWithMediaType:AVMediaTypeVideo]);
     
-    if (_flags.recording) {
-        // setup media writer
-        if (isAudio && !_mediaWriter.isAudioReady) {
-            [self _setupMediaWriterAudioInputWithSampleBuffer:sampleBuffer];
-            DLog(@"ready for audio (%d)", _mediaWriter.isAudioReady);
-        }
-        if (isVideo && !_mediaWriter.isVideoReady) {
-            [self _setupMediaWriterVideoInputWithSampleBuffer:sampleBuffer];
-            DLog(@"ready for video (%d)", _mediaWriter.isVideoReady);
-        }
+    // get out input formats
+    CMFormatDescriptionRef formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer);
+    if (isVideo)
+    {
+        [self _setupVideoWithFormat:formatDescription];
+    }
+    else if (isAudio)
+    {
+        self.outputAudioFormatDescription = formatDescription;
+    }
 
+
+    if (_flags.recording) {
         BOOL isReadyToRecord = (_mediaWriter.isVideoReady && (_mediaWriter.isAudioReady || !_flags.audioCaptureEnabled));
         if (!isReadyToRecord) {
             CFRelease(sampleBuffer);
@@ -2337,6 +2364,21 @@ typedef void (^PBJVisionBlock)();
     
     CFRelease(sampleBuffer);
 
+}
+
+- (void)captureOutput:(AVCaptureOutput *)captureOutput didDropSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection
+{
+    BOOL isAudio = (connection == [_captureOutputAudio connectionWithMediaType:AVMediaTypeAudio]);
+    BOOL isVideo = (connection == [_captureOutputVideo connectionWithMediaType:AVMediaTypeVideo]);
+    NSString * reason = (__bridge NSString*)CMGetAttachment(sampleBuffer, kCMSampleBufferAttachmentKey_DroppedFrameReason, NULL);
+    if (isAudio)
+    {
+        DLog(@"Did drop Audio Sample Buffer for reason %@", reason);
+    }
+    else if (isVideo)
+    {
+        DLog(@"Did drop Video Sample Buffer for reason %@", reason);
+    }
 }
 
 - (void)calculateFramerateAtTimestamp:(CMTime)timestamp
@@ -2624,6 +2666,11 @@ typedef void (^PBJVisionBlock)();
     
 }
 
+- (void)mediaWriterDidFinishPreparing:(PBJMediaWriter *)mediaWriter
+{
+    DLog(@"Media Writer Did Finish Preparing");
+}
+
 #pragma mark - sample buffer processing
 
 - (void)clearPreviewView
@@ -2711,7 +2758,7 @@ typedef void (^PBJVisionBlock)();
     
     // render the filtered, square, center cropped image back to the outup video
     CVPixelBufferRef renderedOutputPixelBuffer = NULL;
-    if ( _mediaWriter.videoReady ) {
+    if ( _mediaWriter.videoReady && _flags.recording ) {
         CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
         if ( !err && renderedOutputPixelBuffer ) {
             [_ciContext render:cropImage toCVPixelBuffer:renderedOutputPixelBuffer];
