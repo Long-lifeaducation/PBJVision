@@ -36,10 +36,25 @@
 #   define DLog(...)
 #endif
 
+typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
+{
+    PBJMediaWriterStatusIdle = 0,
+    PBJMediaWriterStausPreparingToRecord,
+    PBJMediaWriterStatusRecording,
+    PBJMediaWriterStatusFlushInFlightBuffers,
+    PBJMediaWriterStatusStopRecording,
+    PBJMediaWriterStatusFinished,
+    PBJMediaWriterStatusFailed,
+};
+
 @interface PBJMediaWriter ()
 {
+    PBJMediaWriterStatus _status;
+
     __weak id <PBJMediaWriterDelegate> _delegate;
     dispatch_queue_t _delegateQueue;
+
+    dispatch_queue_t _writerQueue;
 
     AVAssetWriter *_assetWriter;
 	AVAssetWriterInput *_assetWriterAudioIn;
@@ -58,6 +73,7 @@
     
     BOOL _audioReady;
     BOOL _videoReady;
+    BOOL _didWriteFirstPacket;
 }
 
 @end
@@ -102,7 +118,7 @@
      // debug
      if (_delegate && (delegateCallbackQueue == NULL))
      {
-        //@throw [NSException exceptionWithName:NSInvalidArgumentException reason:@"Caller must provide a delegateCallbackQueue" userInfo:nil];
+        @throw [NSException exceptionWithName:NSInvalidArgumentException reason:@"Caller must provide a delegateCallbackQueue" userInfo:nil];
      }
 
     @synchronized(self)
@@ -126,6 +142,10 @@
             return nil;
         }
 
+        _status = PBJMediaWriterStatusIdle;
+
+        _writerQueue = dispatch_queue_create( "PBJMediaWriterWriting", DISPATCH_QUEUE_SERIAL );
+
         _outputURL = outputURL;
         _assetWriter.shouldOptimizeForNetworkUse = YES;
         _assetWriter.metadata = [self _metadataArray];
@@ -145,7 +165,6 @@
             }
             
             if ([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo] == AVAuthorizationStatusDenied) {
-                _videoReady = YES;
                 if ([_delegate respondsToSelector:@selector(mediaWriterDidObserveVideoAuthorizationStatusDenied:)]) {
                     [_delegate mediaWriterDidObserveVideoAuthorizationStatusDenied:self];
                 }
@@ -189,7 +208,16 @@
 {
     @synchronized(self)
     {
-        _audioTrackSourceFormatDescription = (CMFormatDescriptionRef)CFRetain( formatDescription );
+        if ( _status != PBJMediaWriterStatusIdle ) {
+            @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"Cannot add tracks while not idle" userInfo:nil];
+            return;
+        }
+
+        if ( _audioTrackSourceFormatDescription ) {
+            @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"Cannot add more than one audio track" userInfo:nil];
+            return;
+        }
+
         _audioSettings = [audioSettings copy];
     }
 }
@@ -198,12 +226,22 @@
 {
     @synchronized(self)
     {
+        if ( _status != PBJMediaWriterStatusIdle ) {
+            @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"Cannot add tracks while not idle" userInfo:nil];
+            return;
+        }
+
+        if ( _videoTrackSourceFormatDescription ) {
+            @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"Cannot add more than one video track" userInfo:nil];
+            return;
+        }
+
         _videoTrackSourceFormatDescription = (CMFormatDescriptionRef)CFRetain( formatDescription );
         _videoSettings = [videoSettings copy];
     }
 }
 
-- (BOOL)setupAudioOutputDeviceWithSettings:(NSDictionary *)audioSettings
+- (NSError *)setupAudioOutputDeviceWithSettings:(NSDictionary *)audioSettings
 {
     //HACK
     _audioReady = YES;
@@ -230,13 +268,15 @@
 //		DLog(@"couldn't apply audio output settings");
 //        
 //	}
-    
-    return _audioReady;
+
+    return nil;
 }
 
-- (BOOL)setupVideoOutputDeviceWithSettings:(NSDictionary *)videoSettings
+- (NSError *)setupVideoOutputDeviceWithSettings:(NSDictionary *)videoSettings
 {
-    BOOL success = NO;
+    NSError *ret = nil;
+    NSDictionary *errorDict = nil;
+
 	if ([_assetWriter canApplyOutputSettings:videoSettings forMediaType:AVMediaTypeVideo]) {
     
 		_assetWriterVideoIn = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo outputSettings:videoSettings];
@@ -260,66 +300,83 @@
                                                 (id)kCFBooleanTrue, (id)kCVPixelFormatOpenGLESCompatibility,
                                                 nil]];
 
+        if (!_assetWriterInputPixelBufferAdaptor)
+        {
+            DLog(@"couldn't set up assetwriterinputpixeladapter");
+            errorDict = @{ NSLocalizedDescriptionKey : @"MediaWriter cannot start recording.",
+                           NSLocalizedFailureReasonErrorKey : @"Cannot get pixel buffer adapter" };
+        }
+
+
 		if ([_assetWriter canAddInput:_assetWriterVideoIn]) {
 			[_assetWriter addInput:_assetWriterVideoIn];
-            success = YES;
 		} else {
 			DLog(@"couldn't add asset writer video input");
+            errorDict = @{ NSLocalizedDescriptionKey : @"MediaWriter cannot start recording.",
+                            NSLocalizedFailureReasonErrorKey : @"Cannot add input" };
 		}
         
 	} else {
     
 		DLog(@"couldn't apply video output settings");
-        
+        errorDict = @{ NSLocalizedDescriptionKey : @"MediaWriter cannot start recording.",
+                       NSLocalizedFailureReasonErrorKey : @"Cannot apply settings" };
+
 	}
+
+    if (errorDict)
+    {
+        ret = [NSError errorWithDomain:@"com.smule.sing.mediawriter" code:0 userInfo:errorDict];
+    }
     
-    return success;
+    return ret;
 }
 
 - (void)prepareToRecord
 {
-    /*
+
     @synchronized(self)
     {
-        // TODO, check state
+        if ( _status != PBJMediaWriterStatusIdle )
+        {
+            @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"Already prepared, cannot prepare again" userInfo:nil];
+            return;
+        }
+
+        [self transitionToStatus:PBJMediaWriterStausPreparingToRecord error:nil];
     }
-     */
+
 
 
     dispatch_async( dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_LOW, 0 ), ^{
 
         @autoreleasepool
         {
-            [self setupVideoOutputDeviceWithSettings:_videoSettings];
-            [self setupAudioOutputDeviceWithSettings:_audioSettings];
+            NSError *error = nil;
 
-            BOOL success = [_assetWriter startWriting];
-            if (!success)
+            if (!error && _videoSettings)
             {
-                dispatch_async( _delegateQueue, ^{
+                error = [self setupVideoOutputDeviceWithSettings:_videoSettings];
+            }
 
-                    @autoreleasepool
-                    {
-                        if ([_delegate respondsToSelector:@selector(mediaWriterDidObserveAssetWriterFailed:)]) {
-                            [_delegate mediaWriterDidObserveAssetWriterFailed:self];
-                        }
-                    }
-                } );
+            if (!error && _audioSettings)
+            {
+                 error = [self setupAudioOutputDeviceWithSettings:_audioSettings];
+            }
+
+            if (!error && [_assetWriter startWriting])
+            {
+                error = _assetWriter.error;
+            }
+
+            if (error)
+            {
+                [self transitionToStatus:PBJMediaWriterStatusFailed error:error];
             }
             else
             {
                 // we're ready to start recording
-                _videoReady = YES;
-
-                dispatch_async( _delegateQueue, ^{
-
-                    @autoreleasepool
-                    {
-                        if ([_delegate respondsToSelector:@selector(mediaWriterDidFinishPreparing:)]) {
-                            [_delegate mediaWriterDidFinishPreparing:self];
-                        }
-                    }
-                } );
+                [self transitionToStatus:PBJMediaWriterStatusRecording error:nil];
             }
 
         }
@@ -364,62 +421,109 @@
 
 - (void)writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType withPixelBuffer:(CVPixelBufferRef)filteredPixelBuffer
 {
-	if ( _assetWriter.status == AVAssetWriterStatusUnknown ) {
-        CMTime startTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-        [self startWritingAtTime:startTime];
-	}
-    
-    if ( _assetWriter.status == AVAssetWriterStatusFailed ) {
-        DLog(@"writer failure, (%@)", _assetWriter.error.localizedDescription);
-        
-        if ([_delegate respondsToSelector:@selector(mediaWriterDidObserveAssetWriterFailed:)]) {
-            [_delegate mediaWriterDidObserveAssetWriterFailed:self];
-        }
-        
-        return;
+    if (!sampleBuffer)
+    {
+        @throw [NSException exceptionWithName:NSInvalidArgumentException reason:@"No sample buffer" userInfo:nil];
     }
-	
-	if ( _assetWriter.status == AVAssetWriterStatusWriting ) {
-		
-        CMTime timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-        CMTime duration = CMSampleBufferGetDuration(sampleBuffer);
-		if (mediaType == AVMediaTypeVideo) {
-			if (_assetWriterVideoIn.readyForMoreMediaData) {
-                if (filteredPixelBuffer) {
-                    if ([_assetWriterInputPixelBufferAdaptor appendPixelBuffer:filteredPixelBuffer withPresentationTime:timestamp]) {
-                        if (CMTIME_IS_VALID(duration)) {
-                            _videoTimestamp = CMTimeAdd(timestamp, duration);
-                        }
-                        else {
-                            _videoTimestamp = timestamp;
-                        }
-                        //DLog(@"videoTimestamp: %lld %d", _videoTimestamp.value, _videoTimestamp.timescale);
-                    } else {
-                        DLog(@"writer error appending video (%@)", [_assetWriter error]);
-                    }
-                } else {
-                    if ([_assetWriterVideoIn appendSampleBuffer:sampleBuffer]) {
-                        _videoTimestamp = CMTimeAdd(timestamp, duration);
-                        //DLog(@"videoTimestamp: %lld %d", _videoTimestamp.value, _videoTimestamp.timescale);
-                    } else {
-                        DLog(@"writer error appending video (%@)", [_assetWriter error]);
-                    }
-                }
-			} else {
-                DLog(@"writer error NOT readyForMoreMediaData");
+
+    CMTime timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+    CMTime duration = CMSampleBufferGetDuration(sampleBuffer);
+
+    @synchronized(self)
+    {
+        if (_status < PBJMediaWriterStatusRecording)
+        {
+            @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"Not ready to record" userInfo:nil];
+        }
+
+        if (_assetWriter.status == AVAssetWriterStatusFailed)
+        {
+            @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"odd stuff..." userInfo:nil];
+        }
+
+        // update the _videoTimestamp for here now...
+        if (mediaType == AVMediaTypeVideo)
+        {
+            _videoTimestamp = timestamp;
+            if (CMTIME_IS_VALID(duration))
+            {
+                _videoTimestamp = CMTimeAdd(timestamp,duration);
             }
-		} else if (mediaType == AVMediaTypeAudio) {
-			if (_assetWriterAudioIn.readyForMoreMediaData) {
-				if ([_assetWriterAudioIn appendSampleBuffer:sampleBuffer]) {
-                    _audioTimestamp = timestamp;
-				} else {
-					DLog(@"writer error appending audio (%@)", [_assetWriter error]);
+        }
+        else if (mediaType == AVMediaTypeAudio)
+        {
+            _audioTimestamp = timestamp;
+        }
+
+    }
+
+    CFRetain(sampleBuffer);
+    if (filteredPixelBuffer)
+    {
+        CFRetain(filteredPixelBuffer);
+    }
+
+
+    dispatch_async( _writerQueue, ^{
+
+        // bail if we've transitioned past writing by the time this hits the writerQueue
+        @synchronized(self)
+        {
+            if (_status > PBJMediaWriterStatusFlushInFlightBuffers)
+            {
+                CFRelease(sampleBuffer);
+                if (filteredPixelBuffer)
+                {
+                    CFRetain(filteredPixelBuffer);
                 }
-			}
-		}
-        
-	}
-    
+                return;
+            }
+        }
+
+        if (!_didWriteFirstPacket)
+        {
+            [_assetWriter startSessionAtSourceTime:timestamp];
+            _didWriteFirstPacket = YES;
+        }
+
+        // avoiding one arrow...
+        AVAssetWriterInput *currentInput = (mediaType == AVMediaTypeVideo) ? _assetWriterVideoIn : _assetWriterAudioIn;
+        BOOL success = YES;
+        if (currentInput && currentInput.readyForMoreMediaData)
+        {
+            if (mediaType == AVMediaTypeVideo && filteredPixelBuffer)
+            {
+                success = [_assetWriterInputPixelBufferAdaptor appendPixelBuffer:filteredPixelBuffer withPresentationTime:timestamp];
+                //DLog(@"appending pixel buffer");
+            }
+            else
+            {
+                success = [currentInput appendSampleBuffer:sampleBuffer];
+            }
+        }
+        else
+        {
+            DLog(@"Dropping %@ buffer because AssetWriter not ready", mediaType);
+        }
+
+        if (!success)
+        {
+            DLog(@"Error appending sample buffer");
+            NSError *error = _assetWriter.error;
+            @synchronized(self)
+            {
+                [self transitionToStatus:PBJMediaWriterStatusFailed error:error];
+            }
+        }
+
+        CFRelease(sampleBuffer);
+        if (filteredPixelBuffer)
+        {
+            CFRelease(filteredPixelBuffer);
+        }
+
+    } );
+
 }
 
 - (void)finishWritingWithCompletionHandler:(void (^)(void))handler
@@ -436,6 +540,139 @@
 }
 
 #pragma mark - dw
+
+- (void)finishWriting
+{
+    BOOL shouldFinishWriting = NO;
+    @synchronized(self)
+    {
+        switch (_status)
+        {
+            case PBJMediaWriterStatusIdle:
+            case PBJMediaWriterStausPreparingToRecord:
+            case PBJMediaWriterStatusFlushInFlightBuffers:
+            case PBJMediaWriterStatusFinished:
+                @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"Not recording" userInfo:nil];
+                break;
+            case PBJMediaWriterStatusFailed:
+                NSLog( @"nothing to do" );
+                break;
+            case PBJMediaWriterStatusRecording:
+                shouldFinishWriting = YES;
+                break;
+            default:
+                break;
+        }
+
+        if (shouldFinishWriting)
+        {
+            // begin to flush buffers
+            [self transitionToStatus:PBJMediaWriterStatusFlushInFlightBuffers error:nil];
+        }
+        else
+        {
+            return;
+        }
+    }
+
+
+    dispatch_async(_writerQueue, ^{
+
+        @autoreleasepool
+        {
+            @synchronized(self)
+            {
+                // potential error case
+                if ( _status != PBJMediaWriterStatusFlushInFlightBuffers ) {
+                    return;
+                }
+
+                [self transitionToStatus:PBJMediaWriterStatusStopRecording error:nil];
+            }
+
+            if (_assetWriterAudioIn)
+            {
+                [_assetWriterAudioIn markAsFinished];
+            }
+            if (_assetWriterVideoIn)
+            {
+                [_assetWriterVideoIn markAsFinished];
+            }
+
+            [_assetWriter finishWritingWithCompletionHandler:^{
+                @synchronized( self )
+                {
+                    NSError *error = _assetWriter.error;
+                    if ( error ) {
+                        [self transitionToStatus:PBJMediaWriterStatusFailed error:error];
+                    }
+                    else {
+                        [self transitionToStatus:PBJMediaWriterStatusFinished error:nil];
+                    }
+                }
+            }];
+        }
+
+    });
+
+}
+
+- (void)transitionToStatus:(PBJMediaWriterStatus)newStatus error:(NSError *)error
+{
+    BOOL doNotify = NO;
+
+    if (newStatus != _status)
+    {
+        // check end states
+        if ( (newStatus == PBJMediaWriterStatusFinished) || (newStatus == PBJMediaWriterStatusFailed))
+        {
+            doNotify = YES;
+            dispatch_async( _writerQueue, ^{
+                [self teardown];
+            } );
+        }
+        else if (newStatus == PBJMediaWriterStatusRecording)
+        {
+             _videoReady = YES;
+            doNotify = YES;
+        }
+
+        _status = newStatus;
+    }
+
+    if (doNotify && self.delegate)
+    {
+        dispatch_async(_delegateQueue, ^{
+
+            @autoreleasepool
+            {
+                switch(newStatus)
+                {
+                    case PBJMediaWriterStatusRecording:
+                        [_delegate mediaWriterDidFinishPreparing:self];
+                        break;
+                    case PBJMediaWriterStatusFinished:
+                        [_delegate mediaWriterDidFinishRecording:self];
+                        break;
+                    case PBJMediaWriterStatusFailed:
+                        [_delegate mediaWriterDidObserveAssetWriterFailed:self withError:nil];
+                        break;
+                    default:
+                        break;
+                }
+            }
+        });
+    }
+
+}
+
+- (void)teardown
+{
+    _assetWriterVideoIn = nil;
+    _assetWriterAudioIn = nil;
+    _assetWriterInputPixelBufferAdaptor = nil;
+    _assetWriter = nil;
+}
 
 - (void)dealloc
 {

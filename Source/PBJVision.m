@@ -34,6 +34,8 @@
 #import <OpenGLES/EAGL.h>
 #import <GLKit/GLKit.h>
 
+#import <AssetsLibrary/AssetsLibrary.h>
+
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #import <client-magic/MagicLogger.h>
@@ -182,6 +184,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     CMTime _minDisplayDuration;
     
     unsigned long _recordedFrameCount;
+
+    BOOL _saveOutput;
     
     // flags
     
@@ -1987,43 +1991,13 @@ typedef void (^PBJVisionBlock)();
         
         _flags.recording = NO;
         _flags.paused = NO;
-        
-        void (^finishWritingCompletionHandler)(void) = ^{
-            Float64 capturedDuration = self.capturedVideoSeconds;
-            
-            Float64 averageFrameRate = (Float64)_recordedFrameCount / capturedDuration;
-            LogError(@"averageFrameRate %f", averageFrameRate)
-            
-            _lastTimestamp = kCMTimeInvalid;
-            _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
-            _flags.interrupted = NO;
-            
-            NSString *path = [_mediaWriter.outputURL path];
-            NSError *error = [_mediaWriter error];
-            _mediaWriter = nil;
-            
-            [self _enqueueBlockOnMainQueue:^{
-                // give delegate a chance to perform tasks/cleanup before capturedVideo
-                // delegate method is called
-                if ([_delegate respondsToSelector:@selector(visionWillEndVideoCapture:)]) {
-                    [_delegate visionWillEndVideoCapture:self];
-                }
-                
-                NSMutableDictionary *videoDict = [[NSMutableDictionary alloc] init];
-                if (path)
-                    [videoDict setObject:path forKey:PBJVisionVideoPathKey];
-                else {
-                    NSLog(@"no recorded video!");
-                }
+        _saveOutput = YES;
 
-                [videoDict setObject:@(capturedDuration) forKey:PBJVisionVideoCapturedDurationKey];
+        // todo checkme
+        _lastTimestamp = kCMTimeInvalid;
+        _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
 
-                if ([_delegate respondsToSelector:@selector(vision:capturedVideo:error:)]) {
-                    [_delegate vision:self capturedVideo:videoDict error:error];
-                }
-            }];
-        };
-        [_mediaWriter finishWritingWithCompletionHandler:finishWritingCompletionHandler];
+        [_mediaWriter finishWriting]; // will call delegate when finished
     }];
 }
 
@@ -2034,33 +2008,8 @@ typedef void (^PBJVisionBlock)();
     [self _enqueueBlockOnCaptureVideoQueue:^{
         _flags.recording = NO;
         _flags.paused = NO;
-        
-        NSURL *outputURL = _mediaWriter.outputURL;
-        
-        void (^finishWritingCompletionHandler)(void) = ^{
-            _lastTimestamp = kCMTimeInvalid;
-            _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
-            _flags.interrupted = NO;
-
-            NSString *path = [outputURL path];
-            if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
-                NSError *error = nil;
-                if (![[NSFileManager defaultManager] removeItemAtPath:path error:&error]) {
-                    DLog(@"could not setup an output file");
-                }
-            }
-            
-            [self _enqueueBlockOnMainQueue:^{
-                NSError *error = [NSError errorWithDomain:PBJVisionErrorDomain code:PBJVisionErrorCancelled userInfo:nil];
-                if ([_delegate respondsToSelector:@selector(vision:capturedVideo:error:)]) {
-                    [_delegate vision:self capturedVideo:nil error:error];
-                }
-            }];
-        };
-        [_mediaWriter finishWritingWithCompletionHandler:finishWritingCompletionHandler];
-        
-        // we don't need the reference to this anymore!
-        _mediaWriter = nil;
+        _saveOutput = NO;
+        [_mediaWriter finishWriting]; // will call delegate when finished
     }];
 }
 
@@ -2189,6 +2138,7 @@ typedef void (^PBJVisionBlock)();
     }
 
 
+    // early bail
     if (_flags.recording) {
         BOOL isReadyToRecord = (_mediaWriter.isVideoReady && (_mediaWriter.isAudioReady || !_flags.audioCaptureEnabled));
         if (!isReadyToRecord) {
@@ -2233,25 +2183,27 @@ typedef void (^PBJVisionBlock)();
     
     //DLog(@"currentTimestamp (%lld / %d)", currentTimestamp.value, currentTimestamp.timescale);
 
-    if (CMTIME_IS_VALID(_lastTimestamp)) {
+    // TODO: fixme since making setup faster changes the nature of timestamps
+
+    /*if (CMTIME_IS_VALID(_lastTimestamp)) {
         //DLog(@"currentTimestamp (%lld / %d)", currentTimestamp.value, currentTimestamp.timescale);
         bufferToWrite = [PBJVisionUtilities createOffsetSampleBufferWithSampleBuffer:sampleBuffer usingTimeOffset:_lastTimestamp];
         if (!bufferToWrite) {
             DLog(@"error subtracting the timeoffset from the sampleBuffer");
         }
-        //DLog(@"subtracted lastTimestamp (%lld / %d)", _lastTimestamp.value, _lastTimestamp.timescale);
+        DLog(@"subtracted lastTimestamp (%lld / %d)", _lastTimestamp.value, _lastTimestamp.timescale);
     }
     else if (CMTIME_IS_VALID(_startTimestamp)){
         bufferToWrite = [PBJVisionUtilities createOffsetSampleBufferWithSampleBuffer:sampleBuffer usingTimeOffset:_startTimestamp];
         if (!bufferToWrite) {
             DLog(@"error subtracting the timeoffset from the sampleBuffer");
         }
-        //DLog(@"subtracted startTimestamp (%lld / %d)", _startTimestamp.value, _startTimestamp.timescale);
+        DLog(@"subtracted startTimestamp (%lld / %d)", _startTimestamp.value, _startTimestamp.timescale);
     }
-    else {
+    else { */
         bufferToWrite = sampleBuffer;
         CFRetain(bufferToWrite);
-    }
+    //}
     
     if (isVideo) {
         
@@ -2289,7 +2241,9 @@ typedef void (^PBJVisionBlock)();
             
             if (filteredPixelBuffer) {
                 // update video and the last timestamp
-                if (_flags.recording && !_flags.paused && CMTIME_IS_INVALID(_lastPauseTimestamp) && !_flags.interrupted && (!_flags.videoWritten || CMTIME_COMPARE_INLINE(time, >=, _mediaWriter.videoTimestamp))) {
+                                                                                                                        // TODO: fixme
+                if (_flags.recording && !_flags.paused && CMTIME_IS_INVALID(_lastPauseTimestamp) && !_flags.interrupted /*&& (!_flags.videoWritten || CMTIME_COMPARE_INLINE(time, >=, _mediaWriter.videoTimestamp))*/) {
+                    //NSLog(@"about to write sample buffer...");
                     [_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeVideo withPixelBuffer:filteredPixelBuffer];
                     _flags.videoWritten = YES;
                     _recordedFrameCount++;
@@ -2656,7 +2610,7 @@ typedef void (^PBJVisionBlock)();
 {
 }
 
-- (void)mediaWriterDidObserveAssetWriterFailed:(PBJMediaWriter *)mediaWriter
+- (void)mediaWriterDidObserveAssetWriterFailed:(PBJMediaWriter *)mediaWriter withError:(NSError *)error
 {
     [self _executeBlockOnMainQueue:^{
         if ([_delegate respondsToSelector:@selector(visionCaptureDidFail:)]) {
@@ -2669,6 +2623,93 @@ typedef void (^PBJVisionBlock)();
 - (void)mediaWriterDidFinishPreparing:(PBJMediaWriter *)mediaWriter
 {
     DLog(@"Media Writer Did Finish Preparing");
+}
+
+- (void)mediaWriterDidFinishRecording:(PBJMediaWriter *)mediaWriter
+{
+    DLog(@"Media Writer Did Finish Recording");
+
+    [self _enqueueBlockOnCaptureVideoQueue:^{
+
+        Float64 capturedDuration = self.capturedVideoSeconds;
+
+        Float64 averageFrameRate = (Float64)_recordedFrameCount / capturedDuration;
+        LogError(@"averageFrameRate %f", averageFrameRate)
+
+        _lastTimestamp = kCMTimeInvalid;
+        _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
+        _flags.interrupted = NO;
+
+        NSString *path = [_mediaWriter.outputURL path];
+        NSError *error = [_mediaWriter error];
+        NSURL *outputURL = _mediaWriter.outputURL;
+
+//#define SAVE_TO_PHOTOS
+#ifdef SAVE_TO_PHOTOS
+
+
+        ALAssetsLibrary *library = [[ALAssetsLibrary alloc] init];
+        [library writeVideoAtPathToSavedPhotosAlbum:outputURL completionBlock:^(NSURL *assetURL, NSError *error) {
+
+            if (!_saveOutput )
+            {
+                [[NSFileManager defaultManager] removeItemAtURL:outputURL error:NULL];
+            }
+
+        }];
+
+#endif
+
+#ifndef SAVE_TO_PHOTOS
+        if (!_saveOutput)
+        {
+            NSString *path = [outputURL path];
+            if ([[NSFileManager defaultManager] fileExistsAtPath:path]) {
+                NSError *error = nil;
+                if (![[NSFileManager defaultManager] removeItemAtPath:path error:&error]) {
+                    DLog(@"could not setup an output file");
+                }
+            }
+        }
+#endif
+
+        _mediaWriter = nil;
+
+        [self _enqueueBlockOnMainQueue:^{
+
+            // give delegate a chance to perform tasks/cleanup before capturedVideo
+            // delegate method is called
+            if (_saveOutput)
+            {
+                if ([_delegate respondsToSelector:@selector(visionWillEndVideoCapture:)]) {
+                    [_delegate visionWillEndVideoCapture:self];
+                }
+
+                NSMutableDictionary *videoDict = [[NSMutableDictionary alloc] init];
+                if (path)
+                    [videoDict setObject:path forKey:PBJVisionVideoPathKey];
+                else {
+                    NSLog(@"no recorded video!");
+                }
+
+                [videoDict setObject:@(capturedDuration) forKey:PBJVisionVideoCapturedDurationKey];
+
+                if ([_delegate respondsToSelector:@selector(vision:capturedVideo:error:)]) {
+                    [_delegate vision:self capturedVideo:videoDict error:error];
+                }
+            }
+            else // cancelled
+            {
+                NSError *error = [NSError errorWithDomain:PBJVisionErrorDomain code:PBJVisionErrorCancelled userInfo:nil];
+                if ([_delegate respondsToSelector:@selector(vision:capturedVideo:error:)]) {
+                    [_delegate vision:self capturedVideo:nil error:error];
+                }
+            }
+        }];
+
+
+
+    }];
 }
 
 #pragma mark - sample buffer processing

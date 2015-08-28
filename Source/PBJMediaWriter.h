@@ -44,8 +44,8 @@
 - (void)setDelegate:(id<PBJMediaWriterDelegate>)delegate callbackQueue:(dispatch_queue_t)delegateCallbackQueue;
 - (void)addAudioTrackWithFormatDescription:(CMFormatDescriptionRef)formatDescription settings:(NSDictionary *)audioSettings;
 - (void)addVideoTrackWithFormatDescription:(CMFormatDescriptionRef)formatDescription settings:(NSDictionary *)videoSettings;
-- (BOOL)setupAudioOutputDeviceWithSettings:(NSDictionary *)audioSettings;
-- (BOOL)setupVideoOutputDeviceWithSettings:(NSDictionary *)videoSettings;
+- (NSError *)setupAudioOutputDeviceWithSettings:(NSDictionary *)audioSettings;
+- (NSError *)setupVideoOutputDeviceWithSettings:(NSDictionary *)videoSettings;
 - (void)prepareToRecord;
 
 - (CVReturn)createPixelBufferFromPool:(CVPixelBufferRef*)renderedOutputPixelBuffer;
@@ -59,13 +59,15 @@
 - (void)writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType withPixelBuffer:(CVPixelBufferRef)filteredPixelBuffer;
 - (BOOL)startWritingAtTime:(CMTime)startTime;
 - (void)finishWritingWithCompletionHandler:(void (^)(void))handler;
+- (void)finishWriting;
 
 @end
 
 @protocol PBJMediaWriterDelegate <NSObject>
 @required
-- (void)mediaWriterDidObserveAssetWriterFailed:(PBJMediaWriter *)mediaWriter;
+- (void)mediaWriterDidObserveAssetWriterFailed:(PBJMediaWriter *)mediaWriter withError:(NSError *)error;
 - (void)mediaWriterDidFinishPreparing:(PBJMediaWriter *)mediaWriter;
+- (void)mediaWriterDidFinishRecording:(PBJMediaWriter *)mediaWriter;
 @optional
 // authorization status provides the opportunity to prompt the user for allowing capture device access
 - (void)mediaWriterDidObserveAudioAuthorizationStatusDenied:(PBJMediaWriter *)mediaWriter;
