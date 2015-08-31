@@ -576,6 +576,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 - (void)setVideoFrameRate:(NSInteger)videoFrameRate
 {
+    videoFrameRate = 24; // set here for now (so we can make all changes in PBJVision)
+
     if (![self supportsVideoFrameRate:videoFrameRate]) {
         DLog(@"frame rate range not supported for current device format");
         return;
