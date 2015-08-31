@@ -2128,11 +2128,11 @@ typedef void (^PBJVisionBlock)();
     
     // get out input formats
     CMFormatDescriptionRef formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer);
-    if (isVideo)
+    if (isVideo && !_outputVideoFormatDescription)
     {
         [self _setupVideoWithFormat:formatDescription];
     }
-    else if (isAudio)
+    else if (isAudio && !_outputAudioFormatDescription)
     {
         self.outputAudioFormatDescription = formatDescription;
     }
