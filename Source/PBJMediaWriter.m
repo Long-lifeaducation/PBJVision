@@ -292,12 +292,13 @@ typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
 #endif
         
         // create a pixel buffer adaptor for the asset writer; we need to obtain pixel buffers for rendering later from its pixel buffer pool
+        CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(_videoTrackSourceFormatDescription);
         _assetWriterInputPixelBufferAdaptor = [AVAssetWriterInputPixelBufferAdaptor assetWriterInputPixelBufferAdaptorWithAssetWriterInput:_assetWriterVideoIn sourcePixelBufferAttributes:
                                                [NSDictionary dictionaryWithObjectsAndKeys:
-                                                [NSNumber numberWithInteger:kCVPixelFormatType_32BGRA], (id)kCVPixelBufferPixelFormatTypeKey,
-                                                videoSettings[AVVideoWidthKey], (id)kCVPixelBufferWidthKey,
-                                                videoSettings[AVVideoWidthKey], (id)kCVPixelBufferHeightKey,
-                                                (id)kCFBooleanTrue, (id)kCVPixelFormatOpenGLESCompatibility,
+                                                [NSNumber numberWithInteger:kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange], (id)kCVPixelBufferPixelFormatTypeKey,
+                                                @(dimensions.width), (id)kCVPixelBufferWidthKey,
+                                                @(dimensions.width), (id)kCVPixelBufferHeightKey,
+                                                (id)kCFBooleanFalse, (id)kCVPixelFormatOpenGLESCompatibility,
                                                 nil]];
 
         if (!_assetWriterInputPixelBufferAdaptor)
@@ -392,6 +393,8 @@ typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
     {
         NSLog(@"Cannot obtain a pixel buffer from the buffer pool %d", err);
     }
+
+
     return err;
 }
 

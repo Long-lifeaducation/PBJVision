@@ -29,6 +29,7 @@
 #import "PBJGLProgram.h"
 #import "VideoFilterManager.h"
 #import "GPUImageSplitFilter.h"
+#include "BufferCopy.h"
 
 #import <ImageIO/ImageIO.h>
 #import <OpenGLES/EAGL.h>
@@ -200,6 +201,19 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         unsigned int audioCaptureEnabled:1;
         unsigned int thumbnailEnabled:1;
     } __block _flags;
+
+    BOOL _setPixelBufferInfo;
+    struct {
+        size_t srcYRowBytes;
+        size_t srcUVRowBytes;
+        size_t srcWidth;
+        size_t srcHeight;
+        size_t dstYRowBytes;
+        size_t dstUVRowBytes;
+        size_t dstWidth;
+        size_t dstHeight;
+        size_t yOffset;
+    } _pixelBufferInfo;
 }
 
 @property (nonatomic) AVCaptureDevice *currentDevice;
@@ -588,6 +602,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         DLog(@"frame rate range not supported for current device format");
         return;
     }
+
     
     BOOL isRecording = _flags.recording;
     if (isRecording) {
@@ -809,6 +824,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         // setup queues
         _captureSessionDispatchQueue = dispatch_queue_create("PBJVisionSession", DISPATCH_QUEUE_SERIAL); // protects session
         _captureVideoDispatchQueue = dispatch_queue_create("PBJVisionVideo", DISPATCH_QUEUE_SERIAL); // protects capture
+        dispatch_set_target_queue( _captureVideoDispatchQueue, dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_HIGH, 0 ) );
         
         _previewLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSession:nil];
         _previewLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
@@ -1260,7 +1276,7 @@ typedef void (^PBJVisionBlock)();
         NSArray *supportedPixelFormats = _captureOutputVideo.availableVideoCVPixelFormatTypes;
         for (NSNumber *currentPixelFormat in supportedPixelFormats) {
             if ([currentPixelFormat intValue] == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) {
-                supportsFullRangeYUV = YES;
+                //supportsFullRangeYUV = YES; // assetwriter does not...
             }
             if ([currentPixelFormat intValue] == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) {
                 supportsVideoRangeYUV = YES;
@@ -1341,6 +1357,10 @@ typedef void (^PBJVisionBlock)();
     }
 
     [_captureSession commitConfiguration];
+
+    [self _enqueueBlockOnCaptureVideoQueue:^{
+    _outputVideoFormatDescription = nil;
+    }];
     
     DLog(@"capture session setup");
 }
@@ -1992,6 +2012,7 @@ typedef void (^PBJVisionBlock)();
         _flags.recording = NO;
         _flags.paused = NO;
         _saveOutput = YES;
+        _setPixelBufferInfo = NO;
 
         // todo checkme
         _lastTimestamp = kCMTimeInvalid;
@@ -2009,6 +2030,7 @@ typedef void (^PBJVisionBlock)();
         _flags.recording = NO;
         _flags.paused = NO;
         _saveOutput = NO;
+        _setPixelBufferInfo = NO;
         [_mediaWriter finishWriting]; // will call delegate when finished
     }];
 }
@@ -2322,6 +2344,7 @@ typedef void (^PBJVisionBlock)();
 
 - (void)captureOutput:(AVCaptureOutput *)captureOutput didDropSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection
 {
+#if 0
     BOOL isAudio = (connection == [_captureOutputAudio connectionWithMediaType:AVMediaTypeAudio]);
     BOOL isVideo = (connection == [_captureOutputVideo connectionWithMediaType:AVMediaTypeVideo]);
     NSString * reason = (__bridge NSString*)CMGetAttachment(sampleBuffer, kCMSampleBufferAttachmentKey_DroppedFrameReason, NULL);
@@ -2333,6 +2356,7 @@ typedef void (^PBJVisionBlock)();
     {
         DLog(@"Did drop Video Sample Buffer for reason %@", reason);
     }
+#endif
 }
 
 - (void)calculateFramerateAtTimestamp:(CMTime)timestamp
@@ -2644,7 +2668,7 @@ typedef void (^PBJVisionBlock)();
         NSError *error = [_mediaWriter error];
         NSURL *outputURL = _mediaWriter.outputURL;
 
-//#define SAVE_TO_PHOTOS
+#define SAVE_TO_PHOTOS
 #ifdef SAVE_TO_PHOTOS
 
 
@@ -2756,13 +2780,10 @@ typedef void (^PBJVisionBlock)();
     if (!_context || !_videoTextureCache) {
         return NULL;
     }
-    
-    // convert to CV image buffer and lock the address to guarantee memory stays available
-    CVImageBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
-    if (CVPixelBufferLockBaseAddress(imageBuffer, 0) != kCVReturnSuccess) {
-        return NULL;
-    }
-    
+
+    BOOL mirror = NO;
+    CVPixelBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+
     // convert this sample buffer into a CIImage (null colorspace to avoid colormatching)
     NSDictionary *options = @{ (id)kCIImageColorSpace : (id)kCFNull };
     CIImage *image = [CIImage imageWithCVPixelBuffer:imageBuffer options:options];
@@ -2775,34 +2796,14 @@ typedef void (^PBJVisionBlock)();
         CGSize size = [image extent].size;
         image = [image imageByApplyingTransform:CGAffineTransformMakeScale(-1.0, 1.0)];
         image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
+        mirror = YES;
     }
-    
-    // center crop the source image to a square for video output
-    CGRect squareRect = [self squareCropRect:sourceExtent withCenterPercent:self.centerPercentage];
-    CIImage *cropImage = [image imageByCroppingToRect:squareRect];
-    
-    // deterine the scale and amount video should be moved over to fit the video output dimensions
-    float scale = 1.0f;
-    float xTrans = -squareRect.origin.x;
-    float yTrans = -squareRect.origin.y;
-    if ( _outputFormat == PBJOutputFormat360x360 ) {
-        scale = (360.0f / squareRect.size.width);
-        xTrans *= scale;
-        yTrans *= scale;
-    }
-    
-    // apply transform to make final image fit perfect in output video dimensions
-    if ( scale != 1.0f ) {
-        cropImage = [image imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
-    }
-    cropImage = [cropImage imageByApplyingTransform:CGAffineTransformMakeTranslation(xTrans, yTrans)];
-    
-    // render the filtered, square, center cropped image back to the outup video
+
     CVPixelBufferRef renderedOutputPixelBuffer = NULL;
     if ( _mediaWriter.videoReady && _flags.recording ) {
         CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
         if ( !err && renderedOutputPixelBuffer ) {
-            [_ciContext render:cropImage toCVPixelBuffer:renderedOutputPixelBuffer];
+            [self _copyPixelBufferToOutput:renderedOutputPixelBuffer fromSrc:imageBuffer withMirror:mirror];
         }
     }
     
@@ -2810,8 +2811,6 @@ typedef void (^PBJVisionBlock)();
     if(!_filteredPreviewView && !_previewView)
     {
         [self setupPreviewViews];
-        
-        
     }
     
     // this check needs to be here to make sure we don't draw to the screen when app is entering background
@@ -2919,7 +2918,7 @@ typedef void (^PBJVisionBlock)();
                 // determine rect for drawing by center cropping source rect based on preview aspect ratio
                 CGSize previewSize = _previewView.layer.frame.size;
                 CGFloat previewAspect = (previewSize.width  / previewSize.height);
-                CGRect drawRect = [self centerCropRect:sourceExtent toAspectRatio:previewAspect];
+                CGRect drawRect = [PBJVisionUtilities centerCropRect:sourceExtent toAspectRatio:previewAspect];
                 
                 // draw the regular preview view (taking screen scale into consideration)
                 [EAGLContext setCurrentContext:_context];
@@ -2957,72 +2956,97 @@ typedef void (^PBJVisionBlock)();
         DLog(@"PREVIEW NOT ENABLED!");
     }
     
-    // we are done with image buffer so unlock it before returning
-    CVPixelBufferUnlockBaseAddress(imageBuffer, 0);
-    
     return renderedOutputPixelBuffer;
 }
 
-- (CGRect)centerCropRect:(CGRect)sourceRect toAspectRatio:(CGFloat)newAspectRatio
+- (void)_copyPixelBufferToOutput:(CVPixelBufferRef)dst fromSrc:(CVPixelBufferRef)src withMirror:(BOOL)mirror
 {
-    CGFloat sourceAspect = (sourceRect.size.width / sourceRect.size.height);
-    
-    // determine cropped rect based on comparison to new aspect ratio
-    CGRect croppedRect = sourceRect;
-    if ( sourceAspect > newAspectRatio )
-    {
-        // landscape. use full height of the video image, and center crop the width
-        croppedRect.size.width = (croppedRect.size.height * newAspectRatio);
-        croppedRect.origin.x = (sourceRect.size.width - croppedRect.size.width) * 0.5f;
-    }
-    else
-    {
-        // portrait. use full width of the video image, and center crop the height
-        croppedRect.size.height = (croppedRect.size.width / newAspectRatio);
-        croppedRect.origin.y = (sourceRect.size.height - croppedRect.size.height) * 0.5f;
-    }
-    
-    return croppedRect;
-}
+    // crop rect
+    CVPixelBufferLockBaseAddress(dst, 0);
+    CVPixelBufferLockBaseAddress(src, kCVPixelBufferLock_ReadOnly);
 
-- (CGRect)squareCropRect:(CGRect)sourceRect withCenterPercent:(CGFloat)centerPercent
-{
-    CGFloat sourceAspect = (sourceRect.size.width / sourceRect.size.height);
-    
-    // determine cropped rect based on comparison to new aspect ratio
-    CGRect croppedRect = sourceRect;
-    if ( sourceAspect > 1.0 )
+    if (!_setPixelBufferInfo)
     {
-        // landscape. use full height of the video image, and determine horizontal centering by percentage
-        croppedRect.size.width = croppedRect.size.height;
-        CGFloat sourceCenterX = (sourceRect.size.width * centerPercent);
-        croppedRect.origin.x = sourceCenterX - (croppedRect.size.width * 0.5f);
-        
-        // check bounds
-        if ( croppedRect.origin.x < 0.0f ) {
-            croppedRect.origin.x = 0.0f;
+        _pixelBufferInfo.srcWidth = CVPixelBufferGetWidth(src);
+        _pixelBufferInfo.srcHeight = CVPixelBufferGetHeight(src);
+
+
+        CGRect srcRect = CGRectMake(0, 0, _pixelBufferInfo.srcWidth, _pixelBufferInfo.srcHeight);
+        CGRect squareRect = [PBJVisionUtilities squareCropRect:srcRect withCenterPercent:self.centerPercentage];
+
+        _pixelBufferInfo.dstWidth = CVPixelBufferGetWidth(dst);
+        _pixelBufferInfo.dstHeight = CVPixelBufferGetHeight(dst);
+
+        _pixelBufferInfo.srcYRowBytes = CVPixelBufferGetBytesPerRowOfPlane(src, 0);
+        _pixelBufferInfo.srcUVRowBytes = CVPixelBufferGetBytesPerRowOfPlane(src, 1);
+
+        _pixelBufferInfo.dstYRowBytes = CVPixelBufferGetBytesPerRowOfPlane(dst, 0);
+        _pixelBufferInfo.dstUVRowBytes = CVPixelBufferGetBytesPerRowOfPlane(dst, 1);
+
+        size_t yOffset = ((size_t)squareRect.origin.y + 1) & ~1; // align to power of 2 (so we copy corresponding UV plane which has half the height)
+        _pixelBufferInfo.yOffset = _pixelBufferInfo.srcHeight - _pixelBufferInfo.dstHeight - yOffset;
+
+
+        _setPixelBufferInfo = YES;
+
+#if 0
+        {
+            // let's log some info about this buffer
+            size_t planeCount = CVPixelBufferGetPlaneCount(dst);
+
+            for (size_t i = 0; i < planeCount; i++)
+            {
+                size_t planeWidth = CVPixelBufferGetWidthOfPlane(dst, i);
+                size_t planeHeight = CVPixelBufferGetHeightOfPlane(dst, i);
+                size_t planeRowBytes = CVPixelBufferGetBytesPerRowOfPlane(dst, i);
+                DLog(@"dst Plane number: %zu width: %zu, Plane Height: %zu, Plane RowBytes: %zu", i, planeWidth, planeHeight, planeRowBytes);
+            }
+
         }
-        else if ( croppedRect.origin.x + croppedRect.size.width > sourceRect.size.width ) {
-            croppedRect.origin.x = sourceRect.size.width - croppedRect.size.width;
+
+        {
+            // let's log some info about this buffer
+            size_t planeCount = CVPixelBufferGetPlaneCount(src);
+
+            for (size_t i = 0; i < planeCount; i++)
+            {
+                size_t planeWidth = CVPixelBufferGetWidthOfPlane(src, i);
+                size_t planeHeight = CVPixelBufferGetHeightOfPlane(src, i);
+                size_t planeRowBytes = CVPixelBufferGetBytesPerRowOfPlane(src, i);
+                DLog(@"src Plane number: %zu width: %zu, Plane Height: %zu, Plane RowBytes: %zu", i, planeWidth, planeHeight, planeRowBytes);
+            }
+            
         }
+#endif
+    }
+
+
+
+    uint8_t *srcYBase = CVPixelBufferGetBaseAddressOfPlane(src,0);
+    uint8_t *dstYBase = CVPixelBufferGetBaseAddressOfPlane(dst,0);
+    srcYBase += (_pixelBufferInfo.yOffset * _pixelBufferInfo.srcYRowBytes);
+
+    uint8_t *srcUVBase = CVPixelBufferGetBaseAddressOfPlane(src,1);
+    uint8_t *dstUVBase = CVPixelBufferGetBaseAddressOfPlane(dst,1);
+    srcUVBase += (_pixelBufferInfo.yOffset/2 * _pixelBufferInfo.srcUVRowBytes);
+
+
+    if (mirror)
+    {
+        CopyBufferNV12Mirror(srcYBase, srcUVBase, _pixelBufferInfo.srcYRowBytes,
+                             _pixelBufferInfo.srcUVRowBytes, dstYBase, dstUVBase, _pixelBufferInfo.dstYRowBytes,
+                             _pixelBufferInfo.dstUVRowBytes, _pixelBufferInfo.dstHeight, _pixelBufferInfo.dstWidth);
     }
     else
     {
-        // portrait. use full width of the video image, and determine vertical centering by percentage
-        croppedRect.size.height = croppedRect.size.width;
-        CGFloat sourceCenterY = (sourceRect.size.height * (1.0f - centerPercent));
-        croppedRect.origin.y = sourceCenterY - (croppedRect.size.height * 0.5f);
-        
-        // check bounds
-        if ( croppedRect.origin.y < 0.0f ) {
-            croppedRect.origin.y = 0.0f;
-        }
-        else if ( croppedRect.origin.y + croppedRect.size.height > sourceRect.size.height ) {
-            croppedRect.origin.y = sourceRect.size.height - croppedRect.size.height;
-        }
+        CopyBufferNV12        (srcYBase, srcUVBase, _pixelBufferInfo.srcYRowBytes,
+                             _pixelBufferInfo.srcUVRowBytes, dstYBase, dstUVBase, _pixelBufferInfo.dstYRowBytes,
+                             _pixelBufferInfo.dstUVRowBytes, _pixelBufferInfo.dstHeight, _pixelBufferInfo.dstWidth);
     }
-    
-    return croppedRect;
+
+
+    CVPixelBufferUnlockBaseAddress(src, kCVPixelBufferLock_ReadOnly);
+    CVPixelBufferUnlockBaseAddress(dst, 0);
 }
 
 - (void)_cleanUpTextures

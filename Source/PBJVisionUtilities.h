@@ -41,6 +41,10 @@
 
 + (uint64_t)availableDiskSpaceInBytes;
 
++ (CGRect)centerCropRect:(CGRect)sourceRect toAspectRatio:(CGFloat)newAspectRatio;
+
++ (CGRect)squareCropRect:(CGRect)sourceRect withCenterPercent:(CGFloat)centerPercent;
+
 @end
 
 @interface NSString (PBJExtras)
