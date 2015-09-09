@@ -2165,21 +2165,12 @@ typedef void (^PBJVisionBlock)();
     if (isVideo) {
         
         if (bufferToWrite) {
-            
-            CMTime time = CMSampleBufferGetPresentationTimeStamp(bufferToWrite);
-            CMTime duration = CMSampleBufferGetDuration(bufferToWrite);
-            
-            // need to start writing so we have the pixel buffer pool alloc'd and ready...
-            if (_flags.recording && !_flags.videoWritten) {
-                _recordedFrameCount = 0;
-                
-                if(![_mediaWriter startWritingAtTime:time]) {
-                    if ([_delegate respondsToSelector:@selector(visionCaptureDidFail:)]) {
-                        [_delegate visionCaptureDidFail:self];
-                    }
-                    return;
-                }
+
+            if (_flags.recording && !_flags.paused && CMTIME_IS_INVALID(_lastPauseTimestamp) && !_flags.interrupted /*&& (!_flags.videoWritten || CMTIME_COMPARE_INLINE(time, >=, _mediaWriter.videoTimestamp))*/)
+            {
+                [self _writeSampleBuffer:bufferToWrite];
             }
+
             
 //            if (CMTIME_IS_VALID(_audioRecordOffset)) {
 //                CMSampleBufferRef bufferToWriteTimedWithAudio = [PBJVisionUtilities createOffsetSampleBufferWithSampleBuffer:sampleBuffer usingTimeOffset:_audioRecordOffset];
@@ -2192,27 +2183,10 @@ typedef void (^PBJVisionBlock)();
 //            }
             
             // process the sample buffer for rendering
-            CVPixelBufferRef filteredPixelBuffer = NULL;
             if (_flags.videoRenderingEnabled) {
-                filteredPixelBuffer = [self _processSampleBuffer:bufferToWrite];
+                [self _renderSampleBuffer:bufferToWrite];
             }
-            
-            if (filteredPixelBuffer) {
-                // update video and the last timestamp
-                                                                                                                        // TODO: fixme
-                if (_flags.recording && !_flags.paused && CMTIME_IS_INVALID(_lastPauseTimestamp) && !_flags.interrupted /*&& (!_flags.videoWritten || CMTIME_COMPARE_INLINE(time, >=, _mediaWriter.videoTimestamp))*/) {
-                    //NSLog(@"about to write sample buffer...");
-                    [_mediaWriter writeSampleBuffer:nil ofType:AVMediaTypeVideo withPixelBuffer:filteredPixelBuffer atTimestamp:time withDuration:duration];
-                    _flags.videoWritten = YES;
-                    _recordedFrameCount++;
-                    //DLog(@"wrote buffer at %lld %d", _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);
-                }
-                else {
-                    //DLog(@"buffer not written!  %lld %d / %lld %d (%d)", time.value, time.timescale, _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale, _flags.recording);
-                }
-                
-                CVPixelBufferRelease(filteredPixelBuffer);
-            }
+
             
             [self _enqueueBlockOnMainQueue:^{
                 if ([_delegate respondsToSelector:@selector(vision:didCaptureVideoSampleBuffer:)]) {
@@ -2687,10 +2661,14 @@ typedef void (^PBJVisionBlock)();
     }
 }
 
-// convert CoreVideo YUV pixel buffer (Y luminance and Cb Cr chroma) into RGB
-// processing is done on the GPU, operation WAY more efficient than converting on the CPU
-- (CVPixelBufferRef)_processSampleBuffer:(CMSampleBufferRef)sampleBuffer
+- (void)_writeSampleBuffer:(CMSampleBufferRef)sampleBuffer
 {
+    //if (_flags.recording && !_flags.paused && CMTIME_IS_INVALID(_lastPauseTimestamp) && !_flags.interrupted /*&& (!_flags.videoWritten || CMTIME_COMPARE_INLINE(time, >=, _mediaWriter.videoTimestamp))*/)
+    if (!_mediaWriter.videoReady || !_flags.recording || _flags.interrupted || _flags.paused || !CMTIME_IS_INVALID(_lastPauseTimestamp))
+    {
+        return;
+    }
+
     BOOL mirror = NO;
     CVPixelBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
 
@@ -2701,14 +2679,47 @@ typedef void (^PBJVisionBlock)();
         mirror = YES;
     }
 
-    CVPixelBufferRef renderedOutputPixelBuffer = NULL;
-    if ( _mediaWriter.videoReady && _flags.recording ) {
-        CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
-        if ( !err && renderedOutputPixelBuffer ) {
-            [self _copyPixelBufferToOutput:renderedOutputPixelBuffer fromSrc:imageBuffer withMirror:mirror];
+    CMTime time = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+    CMTime duration = CMSampleBufferGetDuration(sampleBuffer);
+
+    // need to prep the writer
+    if (!_flags.videoWritten) {
+        _recordedFrameCount = 0;
+
+        if(![_mediaWriter startWritingAtTime:time]) {
+            if ([_delegate respondsToSelector:@selector(visionCaptureDidFail:)]) {
+                [_delegate visionCaptureDidFail:self];
+            }
+            return;
         }
     }
-    
+
+    CVPixelBufferRef renderedOutputPixelBuffer = NULL;
+    CVReturn err = [_mediaWriter createPixelBufferFromPool:&renderedOutputPixelBuffer];
+    if (err || !renderedOutputPixelBuffer)
+    {
+        if (renderedOutputPixelBuffer)
+        {
+            CVPixelBufferRelease(renderedOutputPixelBuffer);
+            DLog(@"Err creating pixel buffer from Pool");
+            return;
+        }
+    }
+
+
+    [self _copyPixelBufferToOutput:renderedOutputPixelBuffer fromSrc:imageBuffer withMirror:mirror];
+    [_mediaWriter writeSampleBuffer:nil ofType:AVMediaTypeVideo withPixelBuffer:renderedOutputPixelBuffer atTimestamp:time withDuration:duration];
+    _flags.videoWritten = YES;
+    _recordedFrameCount++;
+    CVPixelBufferRelease(renderedOutputPixelBuffer);
+    //DLog(@"wrote buffer at %lld %d", _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);
+}
+
+
+// convert CoreVideo YUV pixel buffer (Y luminance and Cb Cr chroma) into RGB
+// processing is done on the GPU, operation WAY more efficient than converting on the CPU
+- (void)_renderSampleBuffer:(CMSampleBufferRef)sampleBuffer
+{
     // Create the views if none exist
     if(!_filteredPreviewView)
     {
@@ -2818,7 +2829,6 @@ typedef void (^PBJVisionBlock)();
         DLog(@"PREVIEW NOT ENABLED!");
     }
 
-    return renderedOutputPixelBuffer;
 }
 
 - (void)_copyPixelBufferToOutput:(CVPixelBufferRef)dst fromSrc:(CVPixelBufferRef)src withMirror:(BOOL)mirror
