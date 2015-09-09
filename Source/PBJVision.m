@@ -2232,6 +2232,7 @@ typedef void (^PBJVisionBlock)();
         if (bufferToWrite) {
             
             CMTime time = CMSampleBufferGetPresentationTimeStamp(bufferToWrite);
+            CMTime duration = CMSampleBufferGetDuration(bufferToWrite);
             
             // need to start writing so we have the pixel buffer pool alloc'd and ready...
             if (_flags.recording && !_flags.videoWritten) {
@@ -2266,7 +2267,7 @@ typedef void (^PBJVisionBlock)();
                                                                                                                         // TODO: fixme
                 if (_flags.recording && !_flags.paused && CMTIME_IS_INVALID(_lastPauseTimestamp) && !_flags.interrupted /*&& (!_flags.videoWritten || CMTIME_COMPARE_INLINE(time, >=, _mediaWriter.videoTimestamp))*/) {
                     //NSLog(@"about to write sample buffer...");
-                    [_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeVideo withPixelBuffer:filteredPixelBuffer];
+                    [_mediaWriter writeSampleBuffer:nil ofType:AVMediaTypeVideo withPixelBuffer:filteredPixelBuffer atTimestamp:time withDuration:duration];
                     _flags.videoWritten = YES;
                     _recordedFrameCount++;
                     //DLog(@"wrote buffer at %lld %d", _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);

@@ -56,7 +56,7 @@
 @property (nonatomic, readonly) CMTime videoTimestamp;
 
 - (void)writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType;
-- (void)writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType withPixelBuffer:(CVPixelBufferRef)filteredPixelBuffer;
+- (void)writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType withPixelBuffer:(CVPixelBufferRef)filteredPixelBuffer atTimestamp:(CMTime)timestamp withDuration:(CMTime)duration;
 - (BOOL)startWritingAtTime:(CMTime)startTime;
 - (void)finishWritingWithCompletionHandler:(void (^)(void))handler;
 - (void)finishWriting;

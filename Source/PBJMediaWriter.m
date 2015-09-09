@@ -419,18 +419,17 @@ typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
 
 - (void)writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType
 {
-    [self writeSampleBuffer:sampleBuffer ofType:mediaType withPixelBuffer:NULL];
+    @throw [NSException exceptionWithName:NSInvalidArgumentException reason:@"Write this method" userInfo:nil];
+    //[self writeSampleBuffer:sampleBuffer ofType:mediaType withPixelBuffer:NULL];
 }
 
-- (void)writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType withPixelBuffer:(CVPixelBufferRef)filteredPixelBuffer
+- (void)writeSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(NSString *)mediaType withPixelBuffer:(CVPixelBufferRef)filteredPixelBuffer atTimestamp:(CMTime)timestamp withDuration:(CMTime)duration
 {
-    if (!sampleBuffer)
+    if (!sampleBuffer && mediaType == AVMediaTypeAudio )
     {
         @throw [NSException exceptionWithName:NSInvalidArgumentException reason:@"No sample buffer" userInfo:nil];
     }
 
-    CMTime timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-    CMTime duration = CMSampleBufferGetDuration(sampleBuffer);
 
     @synchronized(self)
     {
@@ -460,7 +459,10 @@ typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
 
     }
 
-    CFRetain(sampleBuffer);
+    if (sampleBuffer)
+    {
+        CFRetain(sampleBuffer);
+    }
     if (filteredPixelBuffer)
     {
         CFRetain(filteredPixelBuffer);
@@ -474,7 +476,10 @@ typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
         {
             if (_status > PBJMediaWriterStatusFlushInFlightBuffers)
             {
-                CFRelease(sampleBuffer);
+                if (sampleBuffer)
+                {
+                    CFRelease(sampleBuffer);
+                }
                 if (filteredPixelBuffer)
                 {
                     CFRetain(filteredPixelBuffer);
@@ -519,7 +524,10 @@ typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
             }
         }
 
-        CFRelease(sampleBuffer);
+        if (sampleBuffer)
+        {
+         CFRelease(sampleBuffer);
+        }
         if (filteredPixelBuffer)
         {
             CFRelease(filteredPixelBuffer);
