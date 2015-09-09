@@ -33,7 +33,6 @@
 
 #import <ImageIO/ImageIO.h>
 #import <OpenGLES/EAGL.h>
-#import <GLKit/GLKit.h>
 
 #import <AssetsLibrary/AssetsLibrary.h>
 
@@ -163,16 +162,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     size_t _bufferWidth;
     size_t _bufferHeight;
     CGRect _presentationFrame;
-
-    EAGLContext *_context;
-    EAGLContext *_contextPreview;
-    PBJGLProgram *_program;
-    CVOpenGLESTextureRef _lumaTexture;
-    CVOpenGLESTextureRef _chromaTexture;
-    CVOpenGLESTextureCacheRef _videoTextureCache;
-    
-    CIContext *_ciContext;
-    CIContext *_ciContextPreview;
     
     NSMutableArray *_previousSecondTimestamps;
 	Float64 _frameRate;
@@ -221,9 +210,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @property (nonatomic, readonly) GPUImageView *filteredPreviewView;
 @property (nonatomic, readonly) GPUImageView *filteredSmallPreviewView;
 
-@property (nonatomic, readonly) GLKView *previewView;
-@property (nonatomic, readonly) GLKView *previewSmallView;
-
 @property (nonatomic, strong) GPUImageMovie *movieDataInput;
 @property (nonatomic, strong) GPUImageFilterGroup *currentFilterGroup;
 @property (nonatomic, strong) VideoFilterManager *filterManager;
@@ -249,8 +235,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @synthesize flashMode = _flashMode;
 @synthesize mirroringMode = _mirroringMode;
 @synthesize outputFormat = _outputFormat;
-@synthesize context = _context;
-@synthesize contextPreview = _contextPreview;
 @synthesize presentationFrame = _presentationFrame;
 @synthesize captureSessionPreset = _captureSessionPreset;
 @synthesize audioBitRate = _audioBitRate;
@@ -603,6 +587,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         return;
     }
 
+    videoFrameRate = 24;
     
     BOOL isRecording = _flags.recording;
     if (isRecording) {
@@ -773,12 +758,12 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 - (CALayer*)videoPreviewLayer
 {
-    return self.isFilterEnabled ? self.filteredPreviewView.layer : self.previewView.layer;
+    return self.filteredPreviewView.layer;
 }
 
 - (CALayer*)videoPreviewSmallLayer
 {
-    return self.isFilterEnabled ? self.filteredSmallPreviewView.layer : self.previewSmallView.layer;
+    return self.filteredSmallPreviewView.layer;
 }
 
 #pragma mark - init
@@ -787,23 +772,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 {
     self = [super init];
     if (self) {
-        
-        // setup GLES
-        _context = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
-        if (!_context) {
-            DLog(@"failed to create GL context");
-        }
-        _contextPreview = [[EAGLContext alloc] initWithAPI:kEAGLRenderingAPIOpenGLES2];
-        if (!_contextPreview) {
-            DLog(@"failed to create GL context");
-        }
-        [self _setupGL];
+
         
         sDeviceRgbColorSpace = CGColorSpaceCreateDeviceRGB();
-        
-        NSDictionary *options = @{ (id)kCIContextWorkingColorSpace : (id)kCFNull };
-        _ciContext = [CIContext contextWithEAGLContext:_context options:options];
-        _ciContextPreview = [CIContext contextWithEAGLContext:_contextPreview options:options];
         
         _centerPercentage = 0.5f;
         
@@ -849,13 +820,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     _delegate = nil;
-
-    [self _cleanUpTextures];
-    
-    if (_videoTextureCache) {
-        CFRelease(_videoTextureCache);
-        _videoTextureCache = NULL;
-    }
     
     if ( _outputVideoFormatDescription ) {
         CFRelease( _outputVideoFormatDescription );
@@ -865,46 +829,26 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         CFRelease( _outputAudioFormatDescription );
     }
     
-    
-    [self _destroyGL];
+
     [self _destroyCamera];
 }
 
 - (void)setupPreviewViews
 {
     DLog(@"resetting preview views...");
-    
-    if(_isFilterEnabled)
-    {
-        _filteredPreviewView = [[GPUImageView alloc] initWithFrame:CGRectMake(0, 0, 640, 640)];
-        [_filteredPreviewView setFillMode:kGPUImageFillModePreserveAspectRatioAndFill];
-        
-        CGRect smallPreviewBounds = _filteredPreviewView.bounds;
-        static const float scale = 0.2;
-        smallPreviewBounds.size.width = smallPreviewBounds.size.width * scale;
-        smallPreviewBounds.size.height = smallPreviewBounds.size.height * scale;
-        
-        _filteredSmallPreviewView = [[GPUImageView alloc] initWithFrame:smallPreviewBounds];
-        [_filteredSmallPreviewView setFillMode:kGPUImageFillModePreserveAspectRatioAndFill];
-    }
-    else
-    {
-        _previewView = [[GLKView alloc] initWithFrame:CGRectZero context:_context];
-        _previewView.enableSetNeedsDisplay = NO;
-        _previewView.frame = CGRectMake(0, 0, 640, 640);
-        
-        CGRect smallPreviewBounds = _previewView.bounds;
-        static const float scale = 0.2;
-        smallPreviewBounds.size.width = smallPreviewBounds.size.width * scale;
-        smallPreviewBounds.size.height = smallPreviewBounds.size.height * scale;
-        
-        _previewSmallView = [[GLKView alloc] initWithFrame:CGRectZero context:_contextPreview];
-        _previewSmallView.enableSetNeedsDisplay = NO;
-        _previewSmallView.frame = smallPreviewBounds;
-    }
-    
-    
-    
+
+    _filteredPreviewView = [[GPUImageView alloc] initWithFrame:CGRectMake(0, 0, 640, 640)];
+    [_filteredPreviewView setFillMode:kGPUImageFillModePreserveAspectRatioAndFill];
+
+    CGRect smallPreviewBounds = _filteredPreviewView.bounds;
+    static const float scale = 0.2;
+    smallPreviewBounds.size.width = smallPreviewBounds.size.width * scale;
+    smallPreviewBounds.size.height = smallPreviewBounds.size.height * scale;
+
+    _filteredSmallPreviewView = [[GPUImageView alloc] initWithFrame:smallPreviewBounds];
+    [_filteredSmallPreviewView setFillMode:kGPUImageFillModePreserveAspectRatioAndFill];
+
+
     DLog(@"reset preview views!");
 }
 
@@ -947,15 +891,6 @@ typedef void (^PBJVisionBlock)();
 {
     if (_captureSession)
         return;
-    
-#if COREVIDEO_USE_EAGLCONTEXT_CLASS_IN_API
-    CVReturn cvError = CVOpenGLESTextureCacheCreate(kCFAllocatorDefault, NULL, _context, NULL, &_videoTextureCache);
-#else
-    CVReturn cvError = CVOpenGLESTextureCacheCreate(kCFAllocatorDefault, NULL, (__bridge void *)_context, NULL, &_videoTextureCache);
-#endif
-    if (cvError) {
-        NSLog(@"error CVOpenGLESTextureCacheCreate (%d)", cvError);
-    }
 
     // create session
     _captureSession = [[AVCaptureSession alloc] init];
@@ -2741,36 +2676,14 @@ typedef void (^PBJVisionBlock)();
 
 - (void)clearPreviewView
 {
-    if(!_isFilterEnabled)
-    {
-        // clear main preview
-        [EAGLContext setCurrentContext:_context];
-        [_previewView bindDrawable];
-        glClearColor(0.0, 0.0, 0.0, 1.0);
-        glClear(GL_COLOR_BUFFER_BIT);
-        [_previewView display];
-        
-        // clear small preview if it is enabled
-        if ( self.smallPreviewEnabled )
-        {
-            [EAGLContext setCurrentContext:_contextPreview];
-            [_previewSmallView bindDrawable];
-            glClearColor(0.0, 0.0, 0.0, 1.0);
-            glClear(GL_COLOR_BUFFER_BIT);
-            [_previewSmallView display];
-        }
-    }
 
-    else
+    [self.currentFilterGroup removeAllTargets];
+    [self.currentFilterGroup addTarget:_filteredPreviewView];
+
+    // clear small preview if it is enabled
+    if ( self.smallPreviewEnabled )
     {
-        [self.currentFilterGroup removeAllTargets];
-        [self.currentFilterGroup addTarget:_filteredPreviewView];
-        
-        // clear small preview if it is enabled
-        if ( self.smallPreviewEnabled )
-        {
-            [self.currentFilterGroup addTarget:_filteredSmallPreviewView];
-        }
+        [self.currentFilterGroup addTarget:_filteredSmallPreviewView];
     }
 }
 
@@ -2778,25 +2691,13 @@ typedef void (^PBJVisionBlock)();
 // processing is done on the GPU, operation WAY more efficient than converting on the CPU
 - (CVPixelBufferRef)_processSampleBuffer:(CMSampleBufferRef)sampleBuffer
 {
-    if (!_context || !_videoTextureCache) {
-        return NULL;
-    }
-
     BOOL mirror = NO;
     CVPixelBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
 
-    // convert this sample buffer into a CIImage (null colorspace to avoid colormatching)
-    NSDictionary *options = @{ (id)kCIImageColorSpace : (id)kCFNull };
-    CIImage *image = [CIImage imageWithCVPixelBuffer:imageBuffer options:options];
-    CGRect sourceExtent = image.extent;
-    
     // manual mirroring!
     if (_cameraDevice == PBJCameraDeviceFront)
     {
         // this will mirror the image in the final output video
-        CGSize size = [image extent].size;
-        image = [image imageByApplyingTransform:CGAffineTransformMakeScale(-1.0, 1.0)];
-        image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(size.width, 0)];
         mirror = YES;
     }
 
@@ -2809,7 +2710,7 @@ typedef void (^PBJVisionBlock)();
     }
     
     // Create the views if none exist
-    if(!_filteredPreviewView && !_previewView)
+    if(!_filteredPreviewView)
     {
         [self setupPreviewViews];
     }
@@ -2817,146 +2718,106 @@ typedef void (^PBJVisionBlock)();
     // this check needs to be here to make sure we don't draw to the screen when app is entering background
     if(_flags.previewRunning)
     {
-        // draw filtered image into preview view if enough time has past since last drawing
         CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-        if (CMTIME_IS_INVALID(_lastVideoDisplayTimestamp) ||
-            CMTIME_COMPARE_INLINE(_lastVideoDisplayTimestamp, >, currentTimestamp) ||
-            CMTIME_COMPARE_INLINE(CMTimeSubtract(currentTimestamp, _lastVideoDisplayTimestamp), >, _minDisplayDuration))
-        {
-            // Draw to GPUImageView
-            if(_isFilterEnabled)
-            {
-                if(!_movieDataInput)
-                {
-                    _movieDataInput = [[GPUImageMovie alloc] init];
-                    [_movieDataInput yuvConversionSetup];
-                }
-                
-                if(_isSwipeEnabled)
-                {
-                    // Get filter based on scrollview offset
-                    GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupAtIndex:self.filterOffset];
-                    
-                    // Check if the filter needs to be changed
-                    if (![[_movieDataInput targets] containsObject:newFilterGroup])
-                    {
-                        [_movieDataInput removeTarget:_currentFilterGroup];
-                        [_currentFilterGroup removeAllTargets];
-                        
-                        _currentFilterGroup = newFilterGroup;
-                        [_movieDataInput addTarget:_currentFilterGroup];
-                        [_currentFilterGroup addTarget:_filteredPreviewView];
-                        
-                        // draw the small preview view if enabled (taking screen scale into consideration)
-                        if ( self.smallPreviewEnabled )
-                        {
-                            [_currentFilterGroup addTarget:_filteredSmallPreviewView];
-                        }
-                    }
-                    
-                    // determine rotation used for mirroring
-                    GPUImageRotationMode rotation = (_cameraDevice == PBJCameraDeviceFront ?
-                                                     kGPUImageFlipHorizonal : kGPUImageNoRotation);
-                    
-                    // to handle mirroring with GPUImage, we just need to horizontal flip the
-                    // initial filters in the chain (as long as they aren't split filters). This
-                    // will flip image for left and right side of split, without flipping split direction
-                    for ( int i = 0; i < _currentFilterGroup.initialFilters.count; i++ )
-                    {
-                        GPUImageFilter *filter = (GPUImageFilter *)_currentFilterGroup.initialFilters[i];
-                        if ( ![filter isKindOfClass:[GPUImageSplitFilter class]] ) {
-                            [filter setInputRotation:rotation atIndex:0];
-                        }
-                    }
-                    
-                    // Tell spilt filter what percentage should be left and right filter
-                    CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
-                                             self.filterOffset - (truncf(self.filterOffset)));
-                    GPUImageSplitFilter *splitFilter = (GPUImageSplitFilter*)[_currentFilterGroup filterAtIndex:_currentFilterGroup.filterCount-1];
-                    [splitFilter setOffset:filterPercent];
-                }
-                
-                else
-                {
-                    if(!_currentFilterGroup)
-                    {
-                        _currentFilterGroup = [_filterManager splitFilterGroupAtIndex:_filterOffset];
-                        
-                        // determine rotation used for mirroring
-                        GPUImageRotationMode rotation = (_cameraDevice == PBJCameraDeviceFront ?
-                                                         kGPUImageFlipHorizonal : kGPUImageNoRotation);
-                        
-                        // to handle mirroring with GPUImage, we just need to horizontal flip the
-                        // initial filters in the chain (as long as they aren't split filters). This
-                        // will flip image for left and right side of split, without flipping split direction
-                        for ( int i = 0; i < _currentFilterGroup.initialFilters.count; i++ )
-                        {
-                            GPUImageFilter *filter = (GPUImageFilter *)_currentFilterGroup.initialFilters[i];
-                            if ( ![filter isKindOfClass:[GPUImageSplitFilter class]] ) {
-                                [filter setInputRotation:rotation atIndex:0];
-                            }
-                        }
-                        
-                        [_movieDataInput addTarget:_currentFilterGroup];
-                        [_currentFilterGroup addTarget:_filteredPreviewView];
-                        
-                        // draw the small preview view if enabled (taking screen scale into consideration)
-                        if ( self.smallPreviewEnabled )
-                        {
-                            [_currentFilterGroup addTarget:_filteredSmallPreviewView];
-                        }
-                    }
-                }
 
-                runSynchronouslyOnVideoProcessingQueue(^{
-                    [_movieDataInput processMovieFrame:sampleBuffer];
-                });
-            }
-            
-            // draw to GLKView
-            else
+        if(!_movieDataInput)
+        {
+            _movieDataInput = [[GPUImageMovie alloc] init];
+            [_movieDataInput yuvConversionSetup];
+        }
+
+        if(/*_isSwipeEnabled*/1)
+        {
+            // Get filter based on scrollview offset
+            GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupAtIndex:self.filterOffset];
+
+            // Check if the filter needs to be changed
+            if (![[_movieDataInput targets] containsObject:newFilterGroup])
             {
-                // determine rect for drawing by center cropping source rect based on preview aspect ratio
-                CGSize previewSize = _previewView.layer.frame.size;
-                CGFloat previewAspect = (previewSize.width  / previewSize.height);
-                CGRect drawRect = [PBJVisionUtilities centerCropRect:sourceExtent toAspectRatio:previewAspect];
-                
-                // draw the regular preview view (taking screen scale into consideration)
-                [EAGLContext setCurrentContext:_context];
-                [_previewView bindDrawable];
-                CGRect previewBounds = CGRectMake(0, 0, previewSize.width, previewSize.height);
-                previewBounds.size.width *= _screenScale;
-                previewBounds.size.height *= _screenScale;
-                [_ciContext drawImage:image inRect:previewBounds fromRect:drawRect];
-                [_previewView display];
-                
-                
+                [_movieDataInput removeTarget:_currentFilterGroup];
+                [_currentFilterGroup removeAllTargets];
+
+                _currentFilterGroup = newFilterGroup;
+                [_movieDataInput addTarget:_currentFilterGroup];
+                [_currentFilterGroup addTarget:_filteredPreviewView];
+
                 // draw the small preview view if enabled (taking screen scale into consideration)
                 if ( self.smallPreviewEnabled )
                 {
-                    [EAGLContext setCurrentContext:_contextPreview];
-                    [_previewSmallView bindDrawable];
-                    CGSize smallPreviewSize = _previewSmallView.layer.frame.size;
-                    CGRect smallPreviewBounds = CGRectMake(0, 0, smallPreviewSize.width, smallPreviewSize.height);
-                    smallPreviewBounds.size.width *= _screenScale;
-                    smallPreviewBounds.size.height *= _screenScale;
-                    [_ciContextPreview drawImage:image inRect:smallPreviewBounds fromRect:drawRect];
-                    [_previewSmallView display];
+                    [_currentFilterGroup addTarget:_filteredSmallPreviewView];
                 }
             }
-            
-            _lastVideoDisplayTimestamp = currentTimestamp;
-            
-            //[self calculateFramerateAtTimestamp:currentTimestamp];
-            //NSLog(@"fps: %f", _frameRate);
+
+            // determine rotation used for mirroring
+            GPUImageRotationMode rotation = (_cameraDevice == PBJCameraDeviceFront ?
+                                             kGPUImageFlipHorizonal : kGPUImageNoRotation);
+
+            // to handle mirroring with GPUImage, we just need to horizontal flip the
+            // initial filters in the chain (as long as they aren't split filters). This
+            // will flip image for left and right side of split, without flipping split direction
+            for ( int i = 0; i < _currentFilterGroup.initialFilters.count; i++ )
+            {
+                GPUImageFilter *filter = (GPUImageFilter *)_currentFilterGroup.initialFilters[i];
+                if ( ![filter isKindOfClass:[GPUImageSplitFilter class]] ) {
+                    [filter setInputRotation:rotation atIndex:0];
+                }
+            }
+
+            // Tell spilt filter what percentage should be left and right filter
+            CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
+                                     self.filterOffset - (truncf(self.filterOffset)));
+            GPUImageSplitFilter *splitFilter = (GPUImageSplitFilter*)[_currentFilterGroup filterAtIndex:_currentFilterGroup.filterCount-1];
+            [splitFilter setOffset:filterPercent];
         }
+
+        else
+        {
+            if(!_currentFilterGroup)
+            {
+                _currentFilterGroup = [_filterManager splitFilterGroupAtIndex:_filterOffset];
+
+                // determine rotation used for mirroring
+                GPUImageRotationMode rotation = (_cameraDevice == PBJCameraDeviceFront ?
+                                                 kGPUImageFlipHorizonal : kGPUImageNoRotation);
+
+                // to handle mirroring with GPUImage, we just need to horizontal flip the
+                // initial filters in the chain (as long as they aren't split filters). This
+                // will flip image for left and right side of split, without flipping split direction
+                for ( int i = 0; i < _currentFilterGroup.initialFilters.count; i++ )
+                {
+                    GPUImageFilter *filter = (GPUImageFilter *)_currentFilterGroup.initialFilters[i];
+                    if ( ![filter isKindOfClass:[GPUImageSplitFilter class]] ) {
+                        [filter setInputRotation:rotation atIndex:0];
+                    }
+                }
+
+                [_movieDataInput addTarget:_currentFilterGroup];
+                [_currentFilterGroup addTarget:_filteredPreviewView];
+
+                // draw the small preview view if enabled (taking screen scale into consideration)
+                if ( self.smallPreviewEnabled )
+                {
+                    [_currentFilterGroup addTarget:_filteredSmallPreviewView];
+                }
+            }
+        }
+
+        runSynchronouslyOnVideoProcessingQueue(^{
+            [_movieDataInput processMovieFrame:sampleBuffer];
+        });
+
+
+        _lastVideoDisplayTimestamp = currentTimestamp;
+
+        //[self calculateFramerateAtTimestamp:currentTimestamp];
+        //NSLog(@"fps: %f", _frameRate);
     }
-    
+
     else
     {
         DLog(@"PREVIEW NOT ENABLED!");
     }
-    
+
     return renderedOutputPixelBuffer;
 }
 
@@ -3050,113 +2911,6 @@ typedef void (^PBJVisionBlock)();
     CVPixelBufferUnlockBaseAddress(dst, 0);
 }
 
-- (void)_cleanUpTextures
-{
-    CVOpenGLESTextureCacheFlush(_videoTextureCache, 0);
 
-    if (_lumaTexture) {
-        CFRelease(_lumaTexture);
-        _lumaTexture = NULL;        
-    }
-    
-    if (_chromaTexture) {
-        CFRelease(_chromaTexture);
-        _chromaTexture = NULL;
-    }
-}
-
-#pragma mark - OpenGLES context support
-// TODO: abstract this in future, put in separate file
-
-- (void)_setupBuffers
-{
-
-// unit square for testing
-//    static const GLfloat unitSquareVertices[] = {
-//        -1.0f, -1.0f,
-//        1.0f, -1.0f,
-//        -1.0f,  1.0f,
-//        1.0f,  1.0f,
-//    };
-    
-    CGSize inputSize = CGSizeMake(_bufferWidth, _bufferHeight);
-    CGRect insetRect = AVMakeRectWithAspectRatioInsideRect(inputSize, _presentationFrame);
-    
-    CGFloat widthScale = CGRectGetHeight(_presentationFrame) / CGRectGetHeight(insetRect);
-    CGFloat heightScale = CGRectGetWidth(_presentationFrame) / CGRectGetWidth(insetRect);
-
-    static GLfloat vertices[8];
-
-    vertices[0] = (GLfloat) -widthScale;
-    vertices[1] = (GLfloat) -heightScale;
-    vertices[2] = (GLfloat) widthScale;
-    vertices[3] = (GLfloat) -heightScale;
-    vertices[4] = (GLfloat) -widthScale;
-    vertices[5] = (GLfloat) heightScale;
-    vertices[6] = (GLfloat) widthScale;
-    vertices[7] = (GLfloat) heightScale;
-
-    static const GLfloat textureCoordinates[] = {
-        0.0f, 1.0f,
-        1.0f, 1.0f,
-        0.0f, 0.0f,
-        1.0f, 0.0f,
-    };
-    
-    static const GLfloat textureCoordinatesVerticalFlip[] = {
-        1.0f, 1.0f,
-        0.0f, 1.0f,
-        1.0f, 0.0f,
-        0.0f, 0.0f,
-    };
-    
-    GLuint vertexAttributeLocation = [_program attributeLocation:PBJGLProgramAttributeVertex];
-    GLuint textureAttributeLocation = [_program attributeLocation:PBJGLProgramAttributeTextureCoord];
-    
-    glEnableVertexAttribArray(vertexAttributeLocation);
-    glVertexAttribPointer(vertexAttributeLocation, 2, GL_FLOAT, GL_FALSE, 0, vertices);
-    
-    if (_cameraDevice == PBJCameraDeviceFront) {
-        glEnableVertexAttribArray(textureAttributeLocation);
-        glVertexAttribPointer(textureAttributeLocation, 2, GL_FLOAT, GL_FALSE, 0, textureCoordinatesVerticalFlip);
-    } else {
-        glEnableVertexAttribArray(textureAttributeLocation);
-        glVertexAttribPointer(textureAttributeLocation, 2, GL_FLOAT, GL_FALSE, 0, textureCoordinates);
-    }
-}
-
-- (void)_setupGL
-{
-    static GLint uniforms[PBJVisionUniformCount];
-
-    [EAGLContext setCurrentContext:_context];
-    
-    NSBundle *bundle = [NSBundle mainBundle];
-    
-    NSString *vertShaderName = [bundle pathForResource:@"Shader" ofType:@"vsh"];
-    NSString *fragShaderName = [bundle pathForResource:@"Shader" ofType:@"fsh"];
-    _program = [[PBJGLProgram alloc] initWithVertexShaderName:vertShaderName fragmentShaderName:fragShaderName];
-    [_program addAttribute:PBJGLProgramAttributeVertex];
-    [_program addAttribute:PBJGLProgramAttributeTextureCoord];
-    [_program link];
-    
-    uniforms[PBJVisionUniformY] = [_program uniformLocation:@"u_samplerY"];
-    uniforms[PBJVisionUniformUV] = [_program uniformLocation:@"u_samplerUV"];
-    [_program use];
-            
-    glUniform1i(uniforms[PBJVisionUniformY], 0);
-    glUniform1i(uniforms[PBJVisionUniformUV], 1);
-}
-
-- (void)_destroyGL
-{
-    [EAGLContext setCurrentContext:_context];
-
-    _program = nil;
-    
-    if ([EAGLContext currentContext] == _context) {
-        [EAGLContext setCurrentContext:nil];
-    }
-}
 
 @end

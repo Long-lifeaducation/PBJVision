@@ -116,7 +116,6 @@ static CGFloat const PBJVideoBitRate960x540 = 3750000 * 8;
 static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 
 @class EAGLContext;
-@class GLKView;
 @class GPUImageView;
 @protocol PBJVisionDelegate;
 @interface PBJVision : NSObject
