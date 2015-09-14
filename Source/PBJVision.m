@@ -201,6 +201,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         size_t dstUVRowBytes;
         size_t dstWidth;
         size_t dstHeight;
+        size_t xOffset;
         size_t yOffset;
     } _pixelBufferInfo;
 }
@@ -2810,7 +2811,11 @@ typedef void (^PBJVisionBlock)();
         _pixelBufferInfo.dstUVRowBytes = CVPixelBufferGetBytesPerRowOfPlane(dst, 1);
 
         size_t yOffset = ((size_t)squareRect.origin.y + 1) & ~1; // align to power of 2 (so we copy corresponding UV plane which has half the height)
-        _pixelBufferInfo.yOffset = _pixelBufferInfo.srcHeight - _pixelBufferInfo.dstHeight - yOffset;
+        yOffset = MIN(yOffset, _pixelBufferInfo.srcHeight - _pixelBufferInfo.dstHeight); // extra check to not read beyond memory in case yOffset is out of whack
+
+        _pixelBufferInfo.yOffset = _pixelBufferInfo.srcHeight - _pixelBufferInfo.dstHeight - yOffset; // copy offset y value is from bottom left
+
+        _pixelBufferInfo.xOffset = MIN(squareRect.origin.x, _pixelBufferInfo.srcWidth - _pixelBufferInfo.dstWidth);
 
 
         _setPixelBufferInfo = YES;
@@ -2851,11 +2856,12 @@ typedef void (^PBJVisionBlock)();
     uint8_t *srcYBase = CVPixelBufferGetBaseAddressOfPlane(src,0);
     uint8_t *dstYBase = CVPixelBufferGetBaseAddressOfPlane(dst,0);
     srcYBase += (_pixelBufferInfo.yOffset * _pixelBufferInfo.srcYRowBytes);
+    srcYBase += _pixelBufferInfo.xOffset;
 
     uint8_t *srcUVBase = CVPixelBufferGetBaseAddressOfPlane(src,1);
     uint8_t *dstUVBase = CVPixelBufferGetBaseAddressOfPlane(dst,1);
     srcUVBase += (_pixelBufferInfo.yOffset/2 * _pixelBufferInfo.srcUVRowBytes);
-
+    srcUVBase += _pixelBufferInfo.xOffset;
 
     if (mirror)
     {
