@@ -176,6 +176,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     unsigned long _recordedFrameCount;
 
     BOOL _saveOutput;
+
+    GPUImageFilter *mirrorFilter;
     
     // flags
     
@@ -1354,9 +1356,18 @@ typedef void (^PBJVisionBlock)();
         return;
     
     DLog(@"Stop Preview");
-    
-    [_movieDataInput removeTarget:_currentFilterGroup];
-    [_currentFilterGroup removeAllTargets];
+
+    if (_currentFilterGroup)
+    {
+        [_movieDataInput removeTarget:_currentFilterGroup];
+        [_currentFilterGroup removeAllTargets];
+    }
+
+    if (mirrorFilter)
+    {
+        [_movieDataInput removeTarget:mirrorFilter];
+        [mirrorFilter removeAllTargets];
+    }
     
     [self _enqueueBlockOnCaptureSessionQueue:^{
 
@@ -2509,7 +2520,7 @@ typedef void (^PBJVisionBlock)();
         NSError *error = [_mediaWriter error];
         NSURL *outputURL = _mediaWriter.outputURL;
 
-//#define SAVE_TO_PHOTOS
+#define SAVE_TO_PHOTOS
 #ifdef SAVE_TO_PHOTOS
 
 
@@ -2582,13 +2593,16 @@ typedef void (^PBJVisionBlock)();
 - (void)clearPreviewView
 {
 
-    [self.currentFilterGroup removeAllTargets];
-    [self.currentFilterGroup addTarget:_filteredPreviewView];
-
-    // clear small preview if it is enabled
-    if ( self.smallPreviewEnabled )
+    if (self.currentFilterGroup)
     {
-        [self.currentFilterGroup addTarget:_filteredSmallPreviewView];
+        [self.currentFilterGroup removeAllTargets];
+        [self.currentFilterGroup addTarget:_filteredPreviewView];
+
+        // clear small preview if it is enabled
+        if ( self.smallPreviewEnabled )
+        {
+            [self.currentFilterGroup addTarget:_filteredSmallPreviewView];
+        }
     }
 }
 
@@ -2692,13 +2706,17 @@ typedef void (^PBJVisionBlock)();
             [_movieDataInput yuvConversionSetup];
         }
 
-        if(/*_isSwipeEnabled*/1)
+        // determine rotation used for mirroring
+        GPUImageRotationMode rotation = (_cameraDevice == PBJCameraDeviceFront ?
+                                         kGPUImageFlipHorizonal : kGPUImageNoRotation);
+
+        if(_isFilterEnabled)
         {
             // Get filter based on scrollview offset
             GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupAtIndex:self.filterOffset];
 
             // Check if the filter needs to be changed
-            if (![[_movieDataInput targets] containsObject:newFilterGroup])
+            if (_isSwipeEnabled && ![[_movieDataInput targets] containsObject:newFilterGroup])
             {
                 [_movieDataInput removeTarget:_currentFilterGroup];
                 [_currentFilterGroup removeAllTargets];
@@ -2714,9 +2732,6 @@ typedef void (^PBJVisionBlock)();
                 }
             }
 
-            // determine rotation used for mirroring
-            GPUImageRotationMode rotation = (_cameraDevice == PBJCameraDeviceFront ?
-                                             kGPUImageFlipHorizonal : kGPUImageNoRotation);
 
             // to handle mirroring with GPUImage, we just need to horizontal flip the
             // initial filters in the chain (as long as they aren't split filters). This
@@ -2729,41 +2744,32 @@ typedef void (^PBJVisionBlock)();
                 }
             }
 
-            // Tell spilt filter what percentage should be left and right filter
-            CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
+            if (_isSwipeEnabled)
+            {
+                // Tell spilt filter what percentage should be left and right filter
+                CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
                                      self.filterOffset - (truncf(self.filterOffset)));
-            GPUImageSplitFilter *splitFilter = (GPUImageSplitFilter*)[_currentFilterGroup filterAtIndex:_currentFilterGroup.filterCount-1];
-            [splitFilter setOffset:filterPercent];
+                GPUImageSplitFilter *splitFilter = (GPUImageSplitFilter*)[_currentFilterGroup filterAtIndex:_currentFilterGroup.filterCount-1];
+                [splitFilter setOffset:filterPercent];
+            }
         }
-
         else
         {
-            if(!_currentFilterGroup)
+            if (!mirrorFilter)
             {
-                _currentFilterGroup = [_filterManager splitFilterGroupAtIndex:_filterOffset];
+                mirrorFilter = [[GPUImageFilter alloc] init];
+            }
 
-                // determine rotation used for mirroring
-                GPUImageRotationMode rotation = (_cameraDevice == PBJCameraDeviceFront ?
-                                                 kGPUImageFlipHorizonal : kGPUImageNoRotation);
+            [mirrorFilter setInputRotation:rotation atIndex:0];
 
-                // to handle mirroring with GPUImage, we just need to horizontal flip the
-                // initial filters in the chain (as long as they aren't split filters). This
-                // will flip image for left and right side of split, without flipping split direction
-                for ( int i = 0; i < _currentFilterGroup.initialFilters.count; i++ )
-                {
-                    GPUImageFilter *filter = (GPUImageFilter *)_currentFilterGroup.initialFilters[i];
-                    if ( ![filter isKindOfClass:[GPUImageSplitFilter class]] ) {
-                        [filter setInputRotation:rotation atIndex:0];
-                    }
-                }
+            if ([[mirrorFilter targets] count] == 0)
+            {
+                [_movieDataInput addTarget:mirrorFilter];
+                [mirrorFilter addTarget:_filteredPreviewView];
 
-                [_movieDataInput addTarget:_currentFilterGroup];
-                [_currentFilterGroup addTarget:_filteredPreviewView];
-
-                // draw the small preview view if enabled (taking screen scale into consideration)
                 if ( self.smallPreviewEnabled )
                 {
-                    [_currentFilterGroup addTarget:_filteredSmallPreviewView];
+                    [mirrorFilter addTarget:_filteredSmallPreviewView];
                 }
             }
         }
