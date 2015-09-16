@@ -39,7 +39,7 @@
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #import <client-magic/MagicLogger.h>
-#import <client-magic/UIDevice+Magic.h> 
+#import <client-magic/UIDevice+Magic.h>
 
 #import "GPUImage.h"
 
@@ -583,6 +583,30 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 // framerate
 
+- (NSInteger)deviceCappedFrameRate:(NSInteger)videoFrameRate
+{
+    // do not cap iPad
+    if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad )
+    {
+        return videoFrameRate;
+    }
+
+    // cap iPods
+    NSString *device = [PBJVision hardwareString];
+    if ([device hasPrefix:@"iPod"])
+    {
+        return MIN(24,videoFrameRate);
+    }
+
+    // cap iPhone 4S and older
+    if ([[UIScreen mainScreen] bounds].size.height < 500.0)
+    {
+        return MIN(24,videoFrameRate);
+    }
+
+    return videoFrameRate;
+}
+
 - (void)setVideoFrameRate:(NSInteger)videoFrameRate
 {
     if (![self supportsVideoFrameRate:videoFrameRate]) {
@@ -590,7 +614,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         return;
     }
 
-    videoFrameRate = 24;
+    videoFrameRate = [self deviceCappedFrameRate:videoFrameRate];
     
     BOOL isRecording = _flags.recording;
     if (isRecording) {
@@ -2520,7 +2544,7 @@ typedef void (^PBJVisionBlock)();
         NSError *error = [_mediaWriter error];
         NSURL *outputURL = _mediaWriter.outputURL;
 
-#define SAVE_TO_PHOTOS
+//#define SAVE_TO_PHOTOS
 #ifdef SAVE_TO_PHOTOS
 
 
