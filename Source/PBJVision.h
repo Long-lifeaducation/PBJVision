@@ -80,7 +80,8 @@ typedef NS_ENUM(NSInteger, PBJOutputFormat) {
     PBJOutputFormatSquare,
     PBJOutputFormatWidescreen,
     PBJOutputFormatStandard, /* 4:3 */
-    PBJOutputFormat360x360
+    PBJOutputFormat360x360,
+    PBJOutputFormat480x480
 };
 
 // PBJError
