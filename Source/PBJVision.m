@@ -2088,10 +2088,12 @@ typedef void (^PBJVisionBlock)();
         NSMutableDictionary *mutableDictionary = [NSMutableDictionary dictionaryWithDictionary:_additionalCompressionProperties];
         [mutableDictionary setObject:@(_videoBitRate) forKey:AVVideoAverageBitRateKey];
         [mutableDictionary setObject:@(_videoFrameRate) forKey:AVVideoMaxKeyFrameIntervalKey];
+        [mutableDictionary setObject:@NO forKey:AVVideoAllowFrameReorderingKey];
         compressionSettings = mutableDictionary;
     } else {
         compressionSettings = @{ AVVideoAverageBitRateKey : @(_videoBitRate),
-                                 AVVideoMaxKeyFrameIntervalKey : @(_videoFrameRate) };
+                                 AVVideoMaxKeyFrameIntervalKey : @(_videoFrameRate),
+                                 AVVideoAllowFrameReorderingKey : @NO };
     }
     
 	NSDictionary *videoSettings = @{ AVVideoCodecKey : AVVideoCodecH264,
