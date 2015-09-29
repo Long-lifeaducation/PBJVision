@@ -2071,11 +2071,13 @@ typedef void (^PBJVisionBlock)();
         {
             videoDimensions.width = 360.0f;
             videoDimensions.height = 360.0f;
+            break;
         }
         case PBJOutputFormat480x480:
         {
             videoDimensions.width = 480.0f;
             videoDimensions.height = 480.0f;
+            break;
         }
         case PBJOutputFormatPreset:
         default:
