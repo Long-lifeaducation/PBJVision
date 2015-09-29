@@ -80,8 +80,9 @@ typedef NS_ENUM(NSInteger, PBJOutputFormat) {
     PBJOutputFormatSquare,
     PBJOutputFormatWidescreen,
     PBJOutputFormatStandard, /* 4:3 */
-    PBJOutputFormat360x360,
-    PBJOutputFormat480x480
+    PBJOutputFormat360x360, /* 1:1 (square) */
+    PBJOutputFormat480x480,
+    PBJOutputFormat720x720
 };
 
 // PBJError
@@ -244,6 +245,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
 - (void)endVideoCapture;
 - (void)cancelVideoCapture;
 - (void)setPreviewFrameRate:(int)frameRate;
+
+- (void)setVideoCodecProperties:(NSInteger)bitrate gopLengthFrames:(NSInteger)gopLength useBFrames:(BOOL)bFrames;
 
 @end
 

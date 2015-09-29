@@ -138,6 +138,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     NSInteger _audioBitRate;
     NSInteger _videoFrameRate;
     NSDictionary *_additionalCompressionProperties;
+    NSDictionary *_videoCompressionProperties;
     
     AVCaptureDevice *_currentDevice;
     AVCaptureDeviceInput *_currentInput;
@@ -273,6 +274,14 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 - (void)setPreviewFrameRate:(int)frameRate
 {
     _minDisplayDuration = CMTimeMake(1, frameRate);
+}
+
+- (void)setVideoCodecProperties:(NSInteger)bitrate gopLengthFrames:(NSInteger)gopLength useBFrames:(BOOL)bFrames
+{
+    _videoCompressionProperties = @{ AVVideoAverageBitRateKey : @(bitrate*1000),
+                                     AVVideoMaxKeyFrameIntervalKey : @(gopLength),
+                                     AVVideoAllowFrameReorderingKey : @(bFrames)
+                                     };
 }
 
 - (BOOL)isCaptureSessionActive
@@ -2071,11 +2080,19 @@ typedef void (^PBJVisionBlock)();
         {
             videoDimensions.width = 360.0f;
             videoDimensions.height = 360.0f;
+            break;
         }
         case PBJOutputFormat480x480:
         {
             videoDimensions.width = 480.0f;
             videoDimensions.height = 480.0f;
+            break;
+        }
+        case PBJOutputFormat720x720:
+        {
+            videoDimensions.width = 720.0f;
+            videoDimensions.height = 720.0f;
+            break;
         }
         case PBJOutputFormatPreset:
         default:
@@ -2083,8 +2100,9 @@ typedef void (^PBJVisionBlock)();
     }
     
     NSDictionary *compressionSettings = nil;
-    
-    if (_additionalCompressionProperties && [_additionalCompressionProperties count] > 0) {
+    if (_videoCompressionProperties) {
+        compressionSettings = _videoCompressionProperties;
+    } else if (_additionalCompressionProperties && [_additionalCompressionProperties count] > 0) {
         NSMutableDictionary *mutableDictionary = [NSMutableDictionary dictionaryWithDictionary:_additionalCompressionProperties];
         [mutableDictionary setObject:@(_videoBitRate) forKey:AVVideoAverageBitRateKey];
         [mutableDictionary setObject:@(_videoFrameRate) forKey:AVVideoMaxKeyFrameIntervalKey];
