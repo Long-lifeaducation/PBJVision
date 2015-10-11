@@ -2854,7 +2854,8 @@ typedef void (^PBJVisionBlock)();
 
         _pixelBufferInfo.yOffset = _pixelBufferInfo.srcHeight - _pixelBufferInfo.dstHeight - yOffset; // copy offset y value is from bottom left
 
-        _pixelBufferInfo.xOffset = MIN(squareRect.origin.x, _pixelBufferInfo.srcWidth - _pixelBufferInfo.dstWidth);
+        size_t xOffset = ((size_t)squareRect.origin.x + 1) & ~1;
+        _pixelBufferInfo.xOffset = MIN(xOffset, _pixelBufferInfo.srcWidth - _pixelBufferInfo.dstWidth);
 
 
         _setPixelBufferInfo = YES;
