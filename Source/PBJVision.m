@@ -583,38 +583,12 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 // framerate
 
-- (NSInteger)deviceCappedFrameRate:(NSInteger)videoFrameRate
-{
-    // do not cap iPad
-    if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad )
-    {
-        return videoFrameRate;
-    }
-
-    // cap iPods
-    NSString *device = [PBJVision hardwareString];
-    if ([device hasPrefix:@"iPod"])
-    {
-        return MIN(24,videoFrameRate);
-    }
-
-    // cap iPhone 4S and older
-    if ([[UIScreen mainScreen] bounds].size.height < 500.0)
-    {
-        return MIN(24,videoFrameRate);
-    }
-
-    return videoFrameRate;
-}
-
 - (void)setVideoFrameRate:(NSInteger)videoFrameRate
 {
     if (![self supportsVideoFrameRate:videoFrameRate]) {
         DLog(@"frame rate range not supported for current device format");
         return;
     }
-
-    videoFrameRate = [self deviceCappedFrameRate:videoFrameRate];
     
     BOOL isRecording = _flags.recording;
     if (isRecording) {
