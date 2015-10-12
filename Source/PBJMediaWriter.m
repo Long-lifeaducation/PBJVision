@@ -486,7 +486,7 @@ typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
                 }
                 if (filteredPixelBuffer)
                 {
-                    CFRetain(filteredPixelBuffer);
+                    CFRelease(filteredPixelBuffer);
                 }
                 return;
             }
