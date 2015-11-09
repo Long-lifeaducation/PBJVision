@@ -2825,12 +2825,14 @@ typedef void (^PBJVisionBlock)();
 
         size_t yOffset = ((size_t)squareRect.origin.y + 1) & ~1; // align to power of 2 (so we copy corresponding UV plane which has half the height)
         yOffset = MIN(yOffset, _pixelBufferInfo.srcHeight - _pixelBufferInfo.dstHeight); // extra check to not read beyond memory in case yOffset is out of whack
-
         _pixelBufferInfo.yOffset = _pixelBufferInfo.srcHeight - _pixelBufferInfo.dstHeight - yOffset; // copy offset y value is from bottom left
 
         size_t xOffset = ((size_t)squareRect.origin.x + 1) & ~1;
+        if (mirror)
+        {
+            xOffset = (_pixelBufferInfo.srcWidth - _pixelBufferInfo.dstWidth) - xOffset;
+        }
         _pixelBufferInfo.xOffset = MIN(xOffset, _pixelBufferInfo.srcWidth - _pixelBufferInfo.dstWidth);
-
 
         _setPixelBufferInfo = YES;
 
