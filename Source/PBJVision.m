@@ -592,38 +592,12 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 // framerate
 
-- (NSInteger)deviceCappedFrameRate:(NSInteger)videoFrameRate
-{
-    // do not cap iPad
-    if ([[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad )
-    {
-        return videoFrameRate;
-    }
-
-    // cap iPods
-    NSString *device = [PBJVision hardwareString];
-    if ([device hasPrefix:@"iPod"])
-    {
-        return MIN(24,videoFrameRate);
-    }
-
-    // cap iPhone 4S and older
-    if ([[UIScreen mainScreen] bounds].size.height < 500.0)
-    {
-        return MIN(24,videoFrameRate);
-    }
-
-    return videoFrameRate;
-}
-
 - (void)setVideoFrameRate:(NSInteger)videoFrameRate
 {
     if (![self supportsVideoFrameRate:videoFrameRate]) {
         DLog(@"frame rate range not supported for current device format");
         return;
     }
-
-    videoFrameRate = [self deviceCappedFrameRate:videoFrameRate];
     
     BOOL isRecording = _flags.recording;
     if (isRecording) {
@@ -2867,11 +2841,14 @@ typedef void (^PBJVisionBlock)();
 
         size_t yOffset = ((size_t)squareRect.origin.y + 1) & ~1; // align to power of 2 (so we copy corresponding UV plane which has half the height)
         yOffset = MIN(yOffset, _pixelBufferInfo.srcHeight - _pixelBufferInfo.dstHeight); // extra check to not read beyond memory in case yOffset is out of whack
-
         _pixelBufferInfo.yOffset = _pixelBufferInfo.srcHeight - _pixelBufferInfo.dstHeight - yOffset; // copy offset y value is from bottom left
 
-        _pixelBufferInfo.xOffset = MIN(squareRect.origin.x, _pixelBufferInfo.srcWidth - _pixelBufferInfo.dstWidth);
-
+        size_t xOffset = ((size_t)squareRect.origin.x + 1) & ~1;
+        if (mirror)
+        {
+            xOffset = (_pixelBufferInfo.srcWidth - _pixelBufferInfo.dstWidth) - xOffset;
+        }
+        _pixelBufferInfo.xOffset = MIN(xOffset, _pixelBufferInfo.srcWidth - _pixelBufferInfo.dstWidth);
 
         _setPixelBufferInfo = YES;
 

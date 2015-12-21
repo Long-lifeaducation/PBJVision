@@ -36,11 +36,12 @@ void CopyBufferNV12(uint8_t * __restrict srcY, uint8_t * __restrict srcUV, size_
 // hand tuning this would speed things up - xcode's version of clang doesn't yet take alignment hints :(
 // nor do neon intrinsics in clang or gcc allow for it yet
 void CopyBufferNV12Mirror(uint8_t * __restrict srcY, uint8_t * __restrict srcUV, size_t srcYRowBytes, size_t srcUVRowBytes,
-                        uint8_t * __restrict dstY, uint8_t * __restrict dstUV, size_t dstYRowBytes, size_t dstUVRowBytes,
-                        size_t width, size_t height)
+                          uint8_t * __restrict dstY, uint8_t * __restrict dstUV, size_t dstYRowBytes, size_t dstUVRowBytes,
+                          size_t width, size_t height)
 {
     size_t i;
     size_t j;
+    size_t widthIndexY = width - 1;
 
     // Copy Y Plane Reversed
     for (i = 0; i < height; i++)
@@ -48,21 +49,25 @@ void CopyBufferNV12Mirror(uint8_t * __restrict srcY, uint8_t * __restrict srcUV,
 #pragma clang loop vectorize(enable) interleave(enable)
         for (j = 0; j < width; j++)
         {
-            dstY[width-j] = srcY[j];
+            dstY[widthIndexY-j] = srcY[j];
         }
         srcY += srcYRowBytes;
         dstY += dstYRowBytes;
     }
 
     // Copy UV plane reversed.
+    // below to help clang autovectorize
+    uint16_t *srcUV16 = (uint16_t*)srcUV;
+    uint16_t *dstUV16 = (uint16_t*)dstUV;
+    size_t widthIndexUV = (width/2) - 1;
     for (i = 0; i < height/2; i++)
     {
 #pragma clang loop vectorize(enable) interleave(enable)
-        for (j = 0; j < width; j++)
+        for (j = 0; j < width/2; j++)
         {
-            dstUV[width-j] = srcUV[j];
+            dstUV16[widthIndexUV-j] = srcUV16[j];
         }
-        srcUV += srcUVRowBytes;
-        dstUV += dstUVRowBytes;
+        srcUV16 += srcUVRowBytes/2;
+        dstUV16 += dstUVRowBytes/2;
     }
 }
