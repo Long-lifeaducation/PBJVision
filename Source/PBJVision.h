@@ -81,7 +81,8 @@ typedef NS_ENUM(NSInteger, PBJOutputFormat) {
     PBJOutputFormatWidescreen,
     PBJOutputFormatStandard, /* 4:3 */
     PBJOutputFormat360x360,
-    PBJOutputFormat480x480
+    PBJOutputFormat480x480,
+    PBJOutputFormat720x720
 };
 
 // PBJError
@@ -109,12 +110,13 @@ extern NSString * const PBJVisionVideoCapturedDurationKey; // Captured duration 
 
 // suggested videoBitRate constants
 
-static CGFloat const PBJVideoBitRate480x360 = 87500 * 8;
-static CGFloat const PBJVideoBitRate640x480 = 437500 * 8;
-static CGFloat const PBJVideoBitRate1280x720 = 1312500 * 8;
-static CGFloat const PBJVideoBitRate1920x1080 = 2975000 * 8;
-static CGFloat const PBJVideoBitRate960x540 = 3750000 * 8;
-static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;
+static CGFloat const PBJVideoBitRate480x360 = 87500 * 8;        // 700kbps
+static CGFloat const PBJVideoBitRate480x480 = 1400000;
+static CGFloat const PBJVideoBitRate640x480 = 437500 * 8;       // 3.5mbps
+static CGFloat const PBJVideoBitRate1280x720 = 1312500 * 8;     // 10.5mbps
+static CGFloat const PBJVideoBitRate1920x1080 = 2975000 * 8;    // 23.8mbps
+static CGFloat const PBJVideoBitRate960x540 = 3750000 * 8;      // 30mbps
+static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 
 @class EAGLContext;
 @class GPUImageView;
