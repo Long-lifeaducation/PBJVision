@@ -242,6 +242,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @synthesize captureSessionPreset = _captureSessionPreset;
 @synthesize audioBitRate = _audioBitRate;
 @synthesize videoBitRate = _videoBitRate;
+@synthesize videoGopDuration = _videoGopDuration;
 @synthesize additionalCompressionProperties = _additionalCompressionProperties;
 @synthesize maximumCaptureDuration = _maximumCaptureDuration;
 
@@ -785,6 +786,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         // Average bytes per second based on video dimensions
         // lower the bitRate, higher the compression
         _videoBitRate = PBJVideoBitRate480x360;
+
+        // gop duration in seconds
+        _videoGopDuration = 1;
 
         // default audio/video configuration
         _audioBitRate = 64000;
@@ -2068,13 +2072,13 @@ typedef void (^PBJVisionBlock)();
     
     if (_additionalCompressionProperties && [_additionalCompressionProperties count] > 0) {
         NSMutableDictionary *mutableDictionary = [NSMutableDictionary dictionaryWithDictionary:_additionalCompressionProperties];
-        [mutableDictionary setObject:@(_videoBitRate) forKey:AVVideoAverageBitRateKey];
+        [mutableDictionary setObject:@(_videoBitRate * _videoGopDuration) forKey:AVVideoAverageBitRateKey];
         [mutableDictionary setObject:@(_videoFrameRate) forKey:AVVideoMaxKeyFrameIntervalKey];
         [mutableDictionary setObject:@NO forKey:AVVideoAllowFrameReorderingKey];
         compressionSettings = mutableDictionary;
     } else {
         compressionSettings = @{ AVVideoAverageBitRateKey : @(_videoBitRate),
-                                 AVVideoMaxKeyFrameIntervalKey : @(_videoFrameRate),
+                                 AVVideoMaxKeyFrameIntervalKey : @(_videoFrameRate * _videoGopDuration),
                                  AVVideoAllowFrameReorderingKey : @NO };
     }
     

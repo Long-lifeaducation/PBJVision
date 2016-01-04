@@ -156,6 +156,7 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 // video compression settings
 
 @property (nonatomic) CGFloat videoBitRate;
+@property (nonatomic) NSInteger videoGopDuration;
 @property (nonatomic) NSInteger audioBitRate;
 @property (nonatomic) NSDictionary *additionalCompressionProperties;
 
