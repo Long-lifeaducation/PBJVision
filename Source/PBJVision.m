@@ -582,119 +582,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     }
 }
 
-// framerate
-
-- (void)setVideoFrameRate:(NSInteger)videoFrameRate
-{
-    if (![self supportsVideoFrameRate:videoFrameRate]) {
-        DLog(@"frame rate range not supported for current device format");
-        return;
-    }
-    
-    BOOL isRecording = _flags.recording;
-    if (isRecording) {
-        [self pauseVideoCapture];
-    }
-
-    CMTime fps = CMTimeMake(1, (int32_t)videoFrameRate);
-
-    if (floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_6_1) {
-        
-        AVCaptureDevice *videoDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
-        AVCaptureDeviceFormat *supportingFormat = nil;
-        int32_t maxWidth = 0;
-
-        NSArray *formats = [videoDevice formats];
-        for (AVCaptureDeviceFormat *format in formats) {
-            NSArray *videoSupportedFrameRateRanges = format.videoSupportedFrameRateRanges;
-            for (AVFrameRateRange *range in videoSupportedFrameRateRanges) {
-    
-                CMFormatDescriptionRef desc = format.formatDescription;
-                CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(desc);
-                int32_t width = dimensions.width;
-                if (range.minFrameRate <= videoFrameRate && videoFrameRate <= range.maxFrameRate && width >= maxWidth) {
-                    supportingFormat = format;
-                    maxWidth = width;
-                }
-                
-            }
-        }
-        
-        if (supportingFormat) {
-            NSError *error = nil;
-            if ([_currentDevice lockForConfiguration:&error]) {
-                _currentDevice.activeVideoMinFrameDuration = fps;
-                _currentDevice.activeVideoMaxFrameDuration = fps;
-                _videoFrameRate = videoFrameRate;
-                [_currentDevice unlockForConfiguration];
-            } else if (error) {
-                DLog(@"error locking device for frame rate change (%@)", error);
-            }
-        }
-        
-        AVCaptureDeviceFormat *activeFormat = [_currentDevice activeFormat];
-        NSLog(@"%@", activeFormat);
-        NSLog(@"%@ %@ %@", activeFormat.mediaType, activeFormat.formatDescription, activeFormat.videoSupportedFrameRateRanges);
-        
-        [self _enqueueBlockOnMainQueue:^{
-            if ([_delegate respondsToSelector:@selector(visionDidChangeVideoFormatAndFrameRate:)])
-                [_delegate visionDidChangeVideoFormatAndFrameRate:self];
-        }];
-            
-    } else {
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        AVCaptureConnection *connection = [_currentOutput connectionWithMediaType:AVMediaTypeVideo];
-        if (connection.isVideoMaxFrameDurationSupported) {
-            connection.videoMaxFrameDuration = fps;
-        } else {
-            DLog(@"failed to set frame rate");
-        }
-        
-        if (connection.isVideoMinFrameDurationSupported) {
-            connection.videoMinFrameDuration = fps;
-            _videoFrameRate = videoFrameRate;
-        } else {
-            DLog(@"failed to set frame rate");
-        }
-        
-        [self _enqueueBlockOnMainQueue:^{
-            if ([_delegate respondsToSelector:@selector(visionDidChangeVideoFormatAndFrameRate:)])
-                [_delegate visionDidChangeVideoFormatAndFrameRate:self];
-        }];
-#pragma clang diagnostic pop
-
-    }
-    
-    if (isRecording) {
-        [self resumeVideoCapture];
-    }
-}
-
-- (NSInteger)videoFrameRate
-{
-    if (!_currentDevice)
-        return 0;
-
-    NSInteger frameRate = 0;
-    
-    if (floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_6_1) {
-
-        frameRate = _currentDevice.activeVideoMaxFrameDuration.timescale;
-    
-    } else {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        AVCaptureConnection *connection = [_currentOutput connectionWithMediaType:AVMediaTypeVideo];
-        frameRate = connection.videoMaxFrameDuration.timescale;
-#pragma clang diagnostic pop
-    }
-	
-	return frameRate;
-}
-
-- (BOOL)supportsVideoFrameRate:(NSInteger)videoFrameRate
+- (BOOL)deviceSupportsVideoFrameRate:(NSInteger)videoFrameRate
 {
     if (floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_6_1) {
         AVCaptureDevice *videoDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
@@ -717,6 +605,28 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 #pragma clang diagnostic pop
     }
 
+    return NO;
+}
+
+- (BOOL)deviceAndFormatSupports:(AVCaptureDevice *)currentDevice framerate:(NSInteger)videoFrameRate
+{
+    if (floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_6_1) {
+        AVCaptureDeviceFormat *activeFormat = currentDevice.activeFormat;
+        NSArray *videoSupportedFrameRateRanges = [activeFormat videoSupportedFrameRateRanges];
+        for (AVFrameRateRange *frameRateRange in videoSupportedFrameRateRanges) {
+            if ( (frameRateRange.minFrameRate <= videoFrameRate) && (videoFrameRate <= frameRateRange.maxFrameRate) ) {
+                return YES;
+            }
+        }
+    }
+    else
+    {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        AVCaptureConnection *connection = [_currentOutput connectionWithMediaType:AVMediaTypeVideo];
+        return (connection.isVideoMaxFrameDurationSupported && connection.isVideoMinFrameDurationSupported);
+#pragma clang diagnostic pop
+    }
     return NO;
 }
 
@@ -1279,6 +1189,44 @@ typedef void (^PBJVisionBlock)();
     // apply presets
     if ([_captureSession canSetSessionPreset:sessionPreset])
         [_captureSession setSessionPreset:sessionPreset];
+
+    // framerate needs to be set after preset, otherwise preset overrides fps
+    // if device doesn't support framerate (which would be very odd since we're not targeting super high or low fps)
+    // use default.
+    if (newCaptureOutput && (newCaptureOutput == _captureOutputVideo)
+        && [self deviceAndFormatSupports:newCaptureDevice framerate:_videoFrameRate])
+    {
+        CMTime fps = CMTimeMake(1, (int32_t)_videoFrameRate);
+        if (floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_6_1)
+        {
+            NSError *error = nil;
+            if ([newCaptureDevice lockForConfiguration:&error]) {
+
+                newCaptureDevice.activeVideoMinFrameDuration = fps;
+                newCaptureDevice.activeVideoMaxFrameDuration = fps;
+                [newCaptureDevice unlockForConfiguration];
+
+            } else if (error) {
+                DLog(@"error locking device for video device (framerate) configuration (%@)", error);
+            }
+        }
+        else
+        {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            if (videoConnection.isVideoMaxFrameDurationSupported) {
+                videoConnection.videoMaxFrameDuration = fps;
+            } else {
+                DLog(@"failed to set frame rate");
+            }
+
+            if (videoConnection.isVideoMinFrameDurationSupported) {
+                videoConnection.videoMinFrameDuration = fps;
+            } else {
+                DLog(@"failed to set frame rate");
+            }
+        }
+    }
 
     if (newDeviceInput)
         _currentInput = newDeviceInput;
