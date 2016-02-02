@@ -2733,7 +2733,7 @@ typedef void (^PBJVisionBlock)();
             GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupAtIndex:self.filterOffset];
 
             // Check if the filter needs to be changed
-            if (_isSwipeEnabled && ![[_movieDataInput targets] containsObject:newFilterGroup])
+            if (![[_movieDataInput targets] containsObject:newFilterGroup])
             {
                 [_movieDataInput removeTarget:_currentFilterGroup];
                 [_currentFilterGroup removeAllTargets];
