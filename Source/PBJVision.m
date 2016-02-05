@@ -2671,9 +2671,11 @@ typedef void (^PBJVisionBlock)();
     if (!_flags.videoWritten) {
         _recordedFrameCount = 0;
         if(![_mediaWriter startWritingAtTime:time]) {
-            if ([_delegate respondsToSelector:@selector(visionCaptureDidFail:)]) {
-                [_delegate visionCaptureDidFail:self];
-            }
+            [self _executeBlockOnMainQueue:^{
+                if ([_delegate respondsToSelector:@selector(visionCaptureDidFail:)]) {
+                    [_delegate visionCaptureDidFail:self];
+                }
+            }];
             return;
         }
     }
