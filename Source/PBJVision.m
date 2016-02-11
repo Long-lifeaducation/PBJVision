@@ -1969,11 +1969,9 @@ typedef void (^PBJVisionBlock)();
                 [_mediaWriter writeSampleBuffer:bufferToWrite ofType:AVMediaTypeAudio];
             }
             
-            [self _enqueueBlockOnMainQueue:^{
-                if ([_delegate respondsToSelector:@selector(vision:didCaptureAudioSample:)]) {
-                    [_delegate vision:self didCaptureAudioSample:bufferToWrite];
-                }
-            }];
+            if ([_delegate respondsToSelector:@selector(vision:didCaptureAudioSample:)]) {
+                [_delegate vision:self didCaptureAudioSample:bufferToWrite];
+            }
         }
     }
     
