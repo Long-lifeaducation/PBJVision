@@ -146,7 +146,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     AVCaptureVideoPreviewLayer *_previewLayer;
     CGRect _cleanAperture;
     GPUImageView *_filteredPreviewView;
-    GPUImageView *_filteredSmallPreviewView;
 
     CMTime _startTimestamp;
     CMTime _lastTimestamp;
@@ -211,7 +210,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @property (nonatomic) AVCaptureDevice *currentDevice;
 
 @property (nonatomic, readonly) GPUImageView *filteredPreviewView;
-@property (nonatomic, readonly) GPUImageView *filteredSmallPreviewView;
 
 @property (nonatomic, strong) GPUImageMovie *movieDataInput;
 @property (nonatomic, strong) GPUImageFilterGroup *currentFilterGroup;
@@ -673,10 +671,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     return self.filteredPreviewView.layer;
 }
 
-- (CALayer*)videoPreviewSmallLayer
-{
-    return self.filteredSmallPreviewView.layer;
-}
 
 #pragma mark - init
 
@@ -754,15 +748,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
     _filteredPreviewView = [[GPUImageView alloc] initWithFrame:CGRectMake(0, 0, 640, 640)];
     [_filteredPreviewView setFillMode:kGPUImageFillModePreserveAspectRatioAndFill];
-
-    CGRect smallPreviewBounds = _filteredPreviewView.bounds;
-    static const float scale = 0.2;
-    smallPreviewBounds.size.width = smallPreviewBounds.size.width * scale;
-    smallPreviewBounds.size.height = smallPreviewBounds.size.height * scale;
-
-    _filteredSmallPreviewView = [[GPUImageView alloc] initWithFrame:smallPreviewBounds];
-    [_filteredSmallPreviewView setFillMode:kGPUImageFillModePreserveAspectRatioAndFill];
-
 
     DLog(@"reset preview views!");
 }
@@ -2562,12 +2547,6 @@ typedef void (^PBJVisionBlock)();
     {
         [self.currentFilterGroup removeAllTargets];
         [self.currentFilterGroup addTarget:_filteredPreviewView];
-
-        // clear small preview if it is enabled
-        if ( self.smallPreviewEnabled )
-        {
-            [self.currentFilterGroup addTarget:_filteredSmallPreviewView];
-        }
     }
 }
 
@@ -2692,11 +2671,6 @@ typedef void (^PBJVisionBlock)();
                 [_movieDataInput addTarget:_currentFilterGroup];
                 [_currentFilterGroup addTarget:_filteredPreviewView];
 
-                // draw the small preview view if enabled (taking screen scale into consideration)
-                if ( self.smallPreviewEnabled )
-                {
-                    [_currentFilterGroup addTarget:_filteredSmallPreviewView];
-                }
             }
 
 
@@ -2733,11 +2707,6 @@ typedef void (^PBJVisionBlock)();
             {
                 [_movieDataInput addTarget:mirrorFilter];
                 [mirrorFilter addTarget:_filteredPreviewView];
-
-                if ( self.smallPreviewEnabled )
-                {
-                    [mirrorFilter addTarget:_filteredSmallPreviewView];
-                }
             }
         }
 

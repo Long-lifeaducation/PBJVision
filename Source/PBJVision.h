@@ -171,9 +171,6 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 @property (nonatomic, readonly) CGRect cleanAperture;
 
 - (CALayer*)videoPreviewLayer;
-- (CALayer*)videoPreviewSmallLayer;
-
-@property (nonatomic, readwrite) BOOL smallPreviewEnabled;
 
 /** 
  this variable is used when cropping the video to a square. Ths value of this percentage
