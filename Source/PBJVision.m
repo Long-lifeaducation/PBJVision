@@ -97,6 +97,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @interface PBJVision () <
     AVCaptureAudioDataOutputSampleBufferDelegate,
     AVCaptureVideoDataOutputSampleBufferDelegate,
+    AVCaptureMetadataOutputObjectsDelegate,
     PBJMediaWriterDelegate>
 {
     // AV
@@ -114,6 +115,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     AVCaptureStillImageOutput *_captureOutputPhoto;
     AVCaptureAudioDataOutput *_captureOutputAudio;
     AVCaptureVideoDataOutput *_captureOutputVideo;
+
+    AVCaptureMetadataOutput *_captureOutputMetadata;
 
     // vision core
 
@@ -138,6 +141,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     NSInteger _audioBitRate;
     NSInteger _videoFrameRate;
     NSDictionary *_additionalCompressionProperties;
+
+    BOOL _detectFaces;
     
     AVCaptureDevice *_currentDevice;
     AVCaptureDeviceInput *_currentInput;
@@ -191,6 +196,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         unsigned int videoRenderingEnabled:1;
         unsigned int audioCaptureEnabled:1;
         unsigned int thumbnailEnabled:1;
+        unsigned int faceDetectionEnabled:1;
     } __block _flags;
 
     BOOL _setPixelBufferInfo;
@@ -309,6 +315,16 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 - (BOOL)isAudioCaptureEnabled
 {
     return _flags.audioCaptureEnabled;
+}
+
+- (void)setFaceDetectionEnabled:(BOOL)faceDetectionEnabled
+{
+    _flags.faceDetectionEnabled = (unsigned int)faceDetectionEnabled;
+}
+
+- (BOOL)isFaceDetectionEnabled
+{
+    return _flags.faceDetectionEnabled;
 }
 
 - (void)setThumbnailEnabled:(BOOL)thumbnailEnabled
@@ -706,6 +722,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         // default flags
         _flags.thumbnailEnabled = YES;
         _flags.audioCaptureEnabled = NO;
+        _flags.faceDetectionEnabled = NO;
 
         // setup queues
         _captureSessionDispatchQueue = dispatch_queue_create("PBJVisionSession", DISPATCH_QUEUE_SERIAL); // protects session
@@ -851,6 +868,11 @@ typedef void (^PBJVisionBlock)();
     	[_captureOutputAudio setSampleBufferDelegate:self queue:_captureVideoDispatchQueue];
     }
     [_captureOutputVideo setSampleBufferDelegate:self queue:_captureVideoDispatchQueue];
+
+    if (_flags.faceDetectionEnabled) {
+        _captureOutputMetadata = [[AVCaptureMetadataOutput alloc] init];
+        [_captureOutputMetadata setMetadataObjectsDelegate:self queue:_captureVideoDispatchQueue];
+    }
 
     // capture device initial settings
     _videoFrameRate = 30;
@@ -1068,10 +1090,15 @@ typedef void (^PBJVisionBlock)();
                 if ([_captureSession canAddOutput:_captureOutputAudio]) {
                     [_captureSession addOutput:_captureOutputAudio];
                 }
-                // vidja output
+                // video output
                 if ([_captureSession canAddOutput:_captureOutputVideo]) {
                     [_captureSession addOutput:_captureOutputVideo];
                     newCaptureOutput = _captureOutputVideo;
+                }
+                // metadata output
+                if (_captureOutputMetadata && [_captureSession canAddOutput:_captureOutputMetadata]) {
+                    [_captureSession addOutput:_captureOutputMetadata];
+                    [_captureOutputMetadata setMetadataObjectTypes:@[AVMetadataObjectTypeFace]];
                 }
                 break;
             }
@@ -2172,6 +2199,20 @@ typedef void (^PBJVisionBlock)();
     else if (isVideo)
     {
         DLog(@"Did drop Video Sample Buffer for reason %@", reason);
+    }
+#endif
+}
+
+- (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputMetadataObjects:(NSArray *)metadataObjects fromConnection:(AVCaptureConnection *)connection
+{
+#if 0
+    for(AVMetadataObject *metadataObject in metadataObjects)
+    {
+        if([metadataObject.type isEqualToString:AVMetadataObjectTypeFace])
+        {
+            CGRect rect = metadataObject.bounds;
+            NSLog(@"%@", NSStringFromCGRect(rect));
+        }
     }
 #endif
 }
