@@ -747,7 +747,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     DLog(@"resetting preview views...");
 
     _filteredPreviewView = [[GPUImageView alloc] initWithFrame:CGRectMake(0, 0, 640, 640)];
-    [_filteredPreviewView setFillMode:kGPUImageFillModePreserveAspectRatioAndFill];
+    [_filteredPreviewView setFillMode:kGPUImageFillModePreserveAspectRatio];
 
     DLog(@"reset preview views!");
 }
