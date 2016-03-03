@@ -177,6 +177,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     BOOL _saveOutput;
 
     GPUImageFilter *mirrorFilter;
+
+    CMVideoDimensions _videoDimensions;
     
     // flags
     
@@ -1231,6 +1233,9 @@ typedef void (^PBJVisionBlock)();
 
     [_captureSession commitConfiguration];
 
+   CMFormatDescriptionRef formatRef =  _currentDevice.activeFormat.formatDescription;
+    _videoDimensions = CMVideoFormatDescriptionGetDimensions(formatRef);
+
     [self _enqueueBlockOnCaptureVideoQueue:^{
     _outputVideoFormatDescription = nil;
     }];
@@ -1915,6 +1920,27 @@ typedef void (^PBJVisionBlock)();
         _setPixelBufferInfo = NO;
         [_mediaWriter finishWriting]; // will call delegate when finished
     }];
+}
+
+- (CGRect)videoImageBounds
+{
+    CGRect videoBounds;
+    CGSize videoSize;
+
+    // width and height siwtched in portrait
+    if (_cameraOrientation == PBJCameraOrientationPortrait || _cameraOrientation == PBJCameraOrientationPortraitUpsideDown )
+    {
+        videoSize = CGSizeMake(_videoDimensions.height, _videoDimensions.width);
+    }
+    else
+    {
+        videoSize = CGSizeMake(_videoDimensions.width, _videoDimensions.height);
+    }
+
+    videoBounds = AVMakeRectWithAspectRatioInsideRect(videoSize, _filteredPreviewView.bounds);
+
+
+    return videoBounds;
 }
 
 #pragma mark - video dw
