@@ -163,7 +163,7 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 // video frame rate (adjustment may change the capture format (AVCaptureDeviceFormat : FoV, zoom factor, etc)
 
 @property (nonatomic) NSInteger videoFrameRate; // desired fps for active cameraDevice
-- (BOOL)supportsVideoFrameRate:(NSInteger)videoFrameRate;
+@property (nonatomic) NSInteger minimumVideoFrameRate; //minimum fps for above (min and desired fps differ)
 
 // preview
 
