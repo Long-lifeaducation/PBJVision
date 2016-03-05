@@ -137,6 +137,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     CGFloat _videoBitRate;
     NSInteger _audioBitRate;
     NSInteger _videoFrameRate;
+    NSInteger _minimumVideoFrameRate;
     NSDictionary *_additionalCompressionProperties;
     
     AVCaptureDevice *_currentDevice;
@@ -608,24 +609,13 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     return NO;
 }
 
-- (BOOL)deviceAndFormatSupports:(AVCaptureDevice *)currentDevice framerate:(NSInteger)videoFrameRate
+- (BOOL)formatSupports:(AVCaptureDeviceFormat *)activeFormat framerate:(NSInteger)videoFrameRate
 {
-    if (floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_6_1) {
-        AVCaptureDeviceFormat *activeFormat = currentDevice.activeFormat;
-        NSArray *videoSupportedFrameRateRanges = [activeFormat videoSupportedFrameRateRanges];
-        for (AVFrameRateRange *frameRateRange in videoSupportedFrameRateRanges) {
-            if ( (frameRateRange.minFrameRate <= videoFrameRate) && (videoFrameRate <= frameRateRange.maxFrameRate) ) {
-                return YES;
-            }
+    NSArray *videoSupportedFrameRateRanges = [activeFormat videoSupportedFrameRateRanges];
+    for (AVFrameRateRange *frameRateRange in videoSupportedFrameRateRanges) {
+        if ( (frameRateRange.minFrameRate <= videoFrameRate) && (videoFrameRate <= frameRateRange.maxFrameRate) ) {
+            return YES;
         }
-    }
-    else
-    {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-        AVCaptureConnection *connection = [_currentOutput connectionWithMediaType:AVMediaTypeVideo];
-        return (connection.isVideoMaxFrameDurationSupported && connection.isVideoMinFrameDurationSupported);
-#pragma clang diagnostic pop
     }
     return NO;
 }
@@ -702,6 +692,11 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
         // default audio/video configuration
         _audioBitRate = 64000;
+
+        // capture device initial settings
+        _videoFrameRate = 30;
+        _minimumVideoFrameRate = 30;
+
         
         // default flags
         _flags.thumbnailEnabled = YES;
@@ -852,8 +847,6 @@ typedef void (^PBJVisionBlock)();
     }
     [_captureOutputVideo setSampleBufferDelegate:self queue:_captureVideoDispatchQueue];
 
-    // capture device initial settings
-    _videoFrameRate = 30;
     
     // when drawing the preview we need to scale it by screen scale to handle correct
     // pixel density. iphone 6+ has a different density than any other device, and it's
@@ -1194,37 +1187,22 @@ typedef void (^PBJVisionBlock)();
     // if device doesn't support framerate (which would be very odd since we're not targeting super high or low fps)
     // use default.
     if (newCaptureOutput && (newCaptureOutput == _captureOutputVideo)
-        && [self deviceAndFormatSupports:newCaptureDevice framerate:_videoFrameRate])
+        && [self formatSupports:newCaptureDevice.activeFormat framerate:_videoFrameRate]
+        && [self formatSupports:newCaptureDevice.activeFormat framerate:_minimumVideoFrameRate])
     {
-        CMTime fps = CMTimeMake(1, (int32_t)_videoFrameRate);
-        if (floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_6_1)
-        {
-            NSError *error = nil;
-            if ([newCaptureDevice lockForConfiguration:&error]) {
+        // duration is 1/framerate
+        CMTime minFrameDuration = CMTimeMake(1, (int32_t)_videoFrameRate);
+        CMTime maxFrameDuration = CMTimeMake(1, (int32_t)_minimumVideoFrameRate);
+        NSError *error = nil;
+        if ([newCaptureDevice lockForConfiguration:&error]) {
 
-                newCaptureDevice.activeVideoMinFrameDuration = fps;
-                newCaptureDevice.activeVideoMaxFrameDuration = fps;
-                [newCaptureDevice unlockForConfiguration];
+            newCaptureDevice.activeVideoMinFrameDuration = minFrameDuration;
+            newCaptureDevice.activeVideoMaxFrameDuration = maxFrameDuration;
 
-            } else if (error) {
-                DLog(@"error locking device for video device (framerate) configuration (%@)", error);
-            }
-        }
-        else
-        {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-            if (videoConnection.isVideoMaxFrameDurationSupported) {
-                videoConnection.videoMaxFrameDuration = fps;
-            } else {
-                DLog(@"failed to set frame rate");
-            }
+            [newCaptureDevice unlockForConfiguration];
 
-            if (videoConnection.isVideoMinFrameDurationSupported) {
-                videoConnection.videoMinFrameDuration = fps;
-            } else {
-                DLog(@"failed to set frame rate");
-            }
+        } else if (error) {
+            DLog(@"error locking device for video device (framerate) configuration (%@)", error);
         }
     }
 
