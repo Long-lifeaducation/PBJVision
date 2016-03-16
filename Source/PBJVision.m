@@ -2477,7 +2477,7 @@ typedef void (^PBJVisionBlock)();
         Float64 capturedDuration = self.capturedVideoSeconds;
 
         Float64 averageFrameRate = (Float64)_recordedFrameCount / capturedDuration;
-        LogError(@"averageFrameRate %f", averageFrameRate)
+        LogError(@"averageFrameRate %f", averageFrameRate);
 
         _lastTimestamp = kCMTimeInvalid;
         _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
