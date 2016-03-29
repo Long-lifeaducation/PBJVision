@@ -143,8 +143,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     AVCaptureDevice *_currentDevice;
     AVCaptureDeviceInput *_currentInput;
     AVCaptureOutput *_currentOutput;
-    
-    AVCaptureVideoPreviewLayer *_previewLayer;
+
     CGRect _cleanAperture;
     GPUImageView *_filteredPreviewView;
 
@@ -229,7 +228,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 @synthesize delegate = _delegate;
 @synthesize currentDevice = _currentDevice;
-@synthesize previewLayer = _previewLayer;
 @synthesize cleanAperture = _cleanAperture;
 @synthesize cameraOrientation = _cameraOrientation;
 @synthesize cameraDevice = _cameraDevice;
@@ -359,9 +357,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
      if (cameraOrientation == _cameraOrientation)
         return;
      _cameraOrientation = cameraOrientation;
-    
-    if ([_previewLayer.connection isVideoOrientationSupported])
-        [self _setOrientationForConnection:_previewLayer.connection];
+
     
     AVCaptureConnection *videoConnection = [_captureOutputVideo connectionWithMediaType:AVMediaTypeVideo];
     if (videoConnection.isVideoOrientationSupported) {
@@ -716,9 +712,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         _captureSessionDispatchQueue = dispatch_queue_create("PBJVisionSession", DISPATCH_QUEUE_SERIAL); // protects session
         _captureVideoDispatchQueue = dispatch_queue_create("PBJVisionVideo", DISPATCH_QUEUE_SERIAL); // protects capture
         dispatch_set_target_queue( _captureVideoDispatchQueue, dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_HIGH, 0 ) );
-        
-        _previewLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSession:nil];
-        _previewLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
         
         _maximumCaptureDuration = kCMTimeInvalid;
         
@@ -1254,11 +1247,6 @@ typedef void (^PBJVisionBlock)();
         
         _lastVideoDisplayTimestamp = kCMTimeInvalid;
         
-        if (_previewLayer && _previewLayer.session != _captureSession) {
-            _previewLayer.session = _captureSession;
-            [self _setOrientationForConnection:_previewLayer.connection];
-        }
-        
         [self _enqueueBlockOnMainQueue:^{
             if ([_delegate respondsToSelector:@selector(visionSessionDidSetup:)]) {
                 [_delegate visionSessionDidSetup:self];
@@ -1302,8 +1290,6 @@ typedef void (^PBJVisionBlock)();
     
     [self _enqueueBlockOnCaptureSessionQueue:^{
 
-        if (_previewLayer)
-            _previewLayer.connection.enabled = YES;
 
         if ([_captureSession isRunning])
             [_captureSession stopRunning];
@@ -1321,8 +1307,6 @@ typedef void (^PBJVisionBlock)();
 
 - (void)unfreezePreview
 {
-    if (_previewLayer)
-        _previewLayer.connection.enabled = YES;
 }
 
 #pragma mark - focus, exposure, white balance
@@ -1496,18 +1480,13 @@ typedef void (^PBJVisionBlock)();
 	_mirroringMode = mirroringMode;
     
     AVCaptureConnection *videoConnection = [_currentOutput connectionWithMediaType:AVMediaTypeVideo];
-	AVCaptureConnection *previewConnection = [_previewLayer connection];
-	
+
     switch (_mirroringMode) {
 		case PBJMirroringOff:
         {
 			if ([videoConnection isVideoMirroringSupported]) {
 				[videoConnection setVideoMirrored:NO];
 			}
-			if ([previewConnection isVideoMirroringSupported]) {
-				[previewConnection setAutomaticallyAdjustsVideoMirroring:NO];
-				[previewConnection setVideoMirrored:NO];
-			}			
 			break;
 		}
         case PBJMirroringOn:
@@ -1515,10 +1494,6 @@ typedef void (^PBJVisionBlock)();
 			if ([videoConnection isVideoMirroringSupported]) {
 				[videoConnection setVideoMirrored:YES];
 			}
-			if ([previewConnection isVideoMirroringSupported]) {
-				[previewConnection setAutomaticallyAdjustsVideoMirroring:NO];
-				[previewConnection setVideoMirrored:YES];
-			}			
 			break;
 		}
         case PBJMirroringAuto:
@@ -1529,10 +1504,6 @@ typedef void (^PBJVisionBlock)();
 			if ([videoConnection isVideoMirroringSupported]) {
 				[videoConnection setVideoMirrored:mirror];
 			}
-			if ([previewConnection isVideoMirroringSupported]) {
-				[previewConnection setAutomaticallyAdjustsVideoMirroring:YES];
-			}
-
 			break;
 		}
 	}
@@ -1657,9 +1628,6 @@ typedef void (^PBJVisionBlock)();
     DLog(@"will capture photo");
     if ([_delegate respondsToSelector:@selector(visionWillCapturePhoto:)])
         [_delegate visionWillCapturePhoto:self];
-    
-    // freeze preview
-    _previewLayer.connection.enabled = NO;
 }
 
 - (void)_didCapturePhoto
