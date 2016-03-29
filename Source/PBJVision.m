@@ -139,6 +139,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     NSInteger _videoFrameRate;
     NSInteger _minimumVideoFrameRate;
     NSDictionary *_additionalCompressionProperties;
+
+    NSInteger _targetCaptureDimension;
     
     AVCaptureDevice *_currentDevice;
     AVCaptureDeviceInput *_currentInput;
@@ -244,6 +246,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @synthesize videoGopDuration = _videoGopDuration;
 @synthesize additionalCompressionProperties = _additionalCompressionProperties;
 @synthesize maximumCaptureDuration = _maximumCaptureDuration;
+@synthesize useFullRange;
+@synthesize targetCaptureDimension = _targetCaptureDimension;
 
 + (NSString*)hardwareString
 {
@@ -629,6 +633,21 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     return NO;
 }
 
+- (AVCaptureDeviceFormat *)formatForDevice:(AVCaptureDevice*)device withDim:(NSInteger)dim mediaSubType:(FourCharCode)subtype
+{
+    NSArray *formats = [device formats];
+    for (AVCaptureDeviceFormat *format in formats) {
+            if (dim == CMVideoFormatDescriptionGetDimensions(format.formatDescription).height
+                && CMFormatDescriptionGetMediaSubType(format.formatDescription) == subtype) {
+                    DLog(@"Found format: %@", format);
+                    return format;
+                }
+        }
+
+    return nil;
+}
+
+
 
 - (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp
 {
@@ -702,6 +721,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         // capture device initial settings
         _videoFrameRate = 30;
         _minimumVideoFrameRate = 30;
+
+        _targetCaptureDimension = 360;
 
         
         // default flags
@@ -1104,30 +1125,6 @@ typedef void (^PBJVisionBlock)();
         
         // specify video preset
         sessionPreset = _captureSessionPreset;
-
-        // setup video settings
-        // kCVPixelFormatType_420YpCbCr8BiPlanarFullRange Bi-Planar Component Y'CbCr 8-bit 4:2:0, full-range (luma=[0,255] chroma=[1,255])
-        // baseAddr points to a big-endian CVPlanarPixelBufferInfo_YCbCrBiPlanar struct
-        BOOL supportsFullRangeYUV = NO;
-        BOOL supportsVideoRangeYUV = NO;
-        NSArray *supportedPixelFormats = _captureOutputVideo.availableVideoCVPixelFormatTypes;
-        for (NSNumber *currentPixelFormat in supportedPixelFormats) {
-            if ([currentPixelFormat intValue] == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) {
-                //supportsFullRangeYUV = YES; // assetwriter does not...
-            }
-            if ([currentPixelFormat intValue] == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) {
-                supportsVideoRangeYUV = YES;
-            }
-        }
-
-        NSDictionary *videoSettings = nil;
-        if (supportsFullRangeYUV) {
-            videoSettings = @{ (id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange) };
-        } else if (supportsVideoRangeYUV) {
-            videoSettings = @{ (id)kCVPixelBufferPixelFormatTypeKey : @(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) };
-        }
-        if (videoSettings)
-            [_captureOutputVideo setVideoSettings:videoSettings];
         
         // setup video device configuration
         if (floor(NSFoundationVersionNumber) > NSFoundationVersionNumber_iOS_6_1) {
@@ -1173,15 +1170,28 @@ typedef void (^PBJVisionBlock)();
             
     }
 
+    // try finding an appropriate format if we're going for full-range
+    AVCaptureDeviceFormat *format = nil;
+    if (useFullRange) {
+        format = [self formatForDevice:newCaptureDevice withDim:_targetCaptureDimension mediaSubType:kCVPixelFormatType_420YpCbCr8BiPlanarFullRange];
+    }
+
+    if (!format) {
+        if (useFullRange) {
+            DLog(@"Could not find full range format");
+            useFullRange = NO;
+        }
+        format = [self formatForDevice:newCaptureDevice withDim:_targetCaptureDimension mediaSubType:kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange];
+    }
+
     // apply presets
-    if ([_captureSession canSetSessionPreset:sessionPreset])
-        [_captureSession setSessionPreset:sessionPreset];
+    //if ([_captureSession canSetSessionPreset:sessionPreset])
+    //    [_captureSession setSessionPreset:sessionPreset];
 
     // framerate needs to be set after preset, otherwise preset overrides fps
     // if device doesn't support framerate (which would be very odd since we're not targeting super high or low fps)
     // use default.
-    if (newCaptureOutput && (newCaptureOutput == _captureOutputVideo)
-        && [self formatSupports:newCaptureDevice.activeFormat minFramerate:_minimumVideoFrameRate maxFramerate:_videoFrameRate])
+    if (newCaptureOutput && (newCaptureOutput == _captureOutputVideo))
     {
         // duration is 1/framerate
         CMTime minFrameDuration = CMTimeMake(1, (int32_t)_videoFrameRate);
@@ -1189,8 +1199,13 @@ typedef void (^PBJVisionBlock)();
         NSError *error = nil;
         if ([newCaptureDevice lockForConfiguration:&error]) {
 
-            newCaptureDevice.activeVideoMinFrameDuration = minFrameDuration;
-            newCaptureDevice.activeVideoMaxFrameDuration = maxFrameDuration;
+            // set format
+            [newCaptureDevice setActiveFormat:format];
+
+            if ([self formatSupports:format minFramerate:_minimumVideoFrameRate maxFramerate:_videoFrameRate]) {
+                newCaptureDevice.activeVideoMinFrameDuration = minFrameDuration;
+                newCaptureDevice.activeVideoMaxFrameDuration = maxFrameDuration;
+            }
 
             [newCaptureDevice unlockForConfiguration];
 

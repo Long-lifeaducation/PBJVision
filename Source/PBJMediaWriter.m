@@ -297,9 +297,12 @@ typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
         // TODO: will we always be square?
         int32_t squareDim = MIN(dimensions.width, dimensions.height);
 
+        FourCharCode pixelFormatType = CMFormatDescriptionGetMediaSubType(_videoTrackSourceFormatDescription);
+
+
         _assetWriterInputPixelBufferAdaptor = [AVAssetWriterInputPixelBufferAdaptor assetWriterInputPixelBufferAdaptorWithAssetWriterInput:_assetWriterVideoIn sourcePixelBufferAttributes:
                                                [NSDictionary dictionaryWithObjectsAndKeys:
-                                                [NSNumber numberWithInteger:kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange], (id)kCVPixelBufferPixelFormatTypeKey,
+                                                [NSNumber numberWithInteger:pixelFormatType], (id)kCVPixelBufferPixelFormatTypeKey,
                                                 @(squareDim), (id)kCVPixelBufferWidthKey,
                                                 @(squareDim), (id)kCVPixelBufferHeightKey,
                                                 (id)kCFBooleanFalse, (id)kCVPixelFormatOpenGLESCompatibility,
