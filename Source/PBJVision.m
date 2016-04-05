@@ -2060,6 +2060,8 @@ typedef void (^PBJVisionBlock)();
     CMFormatDescriptionRef formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer);
     if (isVideo && !_outputVideoFormatDescription)
     {
+        CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription);
+        DLog(@"Setting up video format with dimensions: %d X %d", dimensions.width, dimensions.height);
         [self _setupVideoWithFormat:formatDescription];
     }
     else if (isAudio && !_outputAudioFormatDescription)
@@ -2782,7 +2784,7 @@ typedef void (^PBJVisionBlock)();
 
         _setPixelBufferInfo = YES;
 
-#if 0
+#if 1
         {
             // let's log some info about this buffer
             size_t planeCount = CVPixelBufferGetPlaneCount(dst);
