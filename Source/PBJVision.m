@@ -978,8 +978,8 @@ typedef void (^PBJVisionBlock)();
     
     DLog(@"switchDevice %d switchMode %d", shouldSwitchDevice, shouldSwitchMode);
 
-    if (!shouldSwitchDevice && !shouldSwitchMode)
-        return;
+    //if (!shouldSwitchDevice && !shouldSwitchMode)
+    //    return;
     
     AVCaptureDeviceInput *newDeviceInput = nil;
     AVCaptureOutput *newCaptureOutput = nil;
@@ -1228,7 +1228,10 @@ typedef void (^PBJVisionBlock)();
     _videoDimensions = CMVideoFormatDescriptionGetDimensions(formatRef);
 
     [self _enqueueBlockOnCaptureVideoQueue:^{
-    _outputVideoFormatDescription = nil;
+        if (_outputVideoFormatDescription)  {
+            CFRelease(_outputVideoFormatDescription);
+            _outputVideoFormatDescription = nil;
+        }
     }];
     
     DLog(@"capture session setup");
