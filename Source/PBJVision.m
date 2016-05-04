@@ -1228,9 +1228,13 @@ typedef void (^PBJVisionBlock)();
     _videoDimensions = CMVideoFormatDescriptionGetDimensions(formatRef);
 
     [self _enqueueBlockOnCaptureVideoQueue:^{
-        if (_outputVideoFormatDescription)  {
-            CFRelease(_outputVideoFormatDescription);
+        if (!CMFormatDescriptionEqual(_outputVideoFormatDescription, formatRef))  {
+            if (_outputVideoFormatDescription) {
+                CFRelease(_outputVideoFormatDescription);
+            }
             _outputVideoFormatDescription = nil;
+            DLog(@"Setting up video format with dimensions: %d X %d", _videoDimensions.width, _videoDimensions.height);
+            [self _setupVideoWithFormat:formatRef];
         }
     }];
     
@@ -2058,20 +2062,6 @@ typedef void (^PBJVisionBlock)();
 
     BOOL isAudio = (connection == [_captureOutputAudio connectionWithMediaType:AVMediaTypeAudio]);
     BOOL isVideo = (connection == [_captureOutputVideo connectionWithMediaType:AVMediaTypeVideo]);
-    
-    // get out input formats
-    CMFormatDescriptionRef formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer);
-    if (isVideo && !_outputVideoFormatDescription)
-    {
-        CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription);
-        DLog(@"Setting up video format with dimensions: %d X %d", dimensions.width, dimensions.height);
-        [self _setupVideoWithFormat:formatDescription];
-    }
-    else if (isAudio && !_outputAudioFormatDescription)
-    {
-        self.outputAudioFormatDescription = formatDescription;
-    }
-
 
     // early bail
     if (_flags.recording) {
