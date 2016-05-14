@@ -1,4 +1,4 @@
-//
+
 //  PBJVision.m
 //  Vision
 //
@@ -884,8 +884,8 @@ typedef void (^PBJVisionBlock)();
     [notificationCenter addObserver:self selector:@selector(_deviceSubjectAreaDidChange:) name:AVCaptureDeviceSubjectAreaDidChangeNotification object:nil];
 
     // current device KVO notifications
-//    [self addObserver:self forKeyPath:@"currentDevice.adjustingFocus" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionFocusObserverContext];
-//    [self addObserver:self forKeyPath:@"currentDevice.adjustingExposure" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionExposureObserverContext];
+    [self addObserver:self forKeyPath:@"currentDevice.adjustingFocus" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionFocusObserverContext];
+    [self addObserver:self forKeyPath:@"currentDevice.adjustingExposure" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionExposureObserverContext];
 //    [self addObserver:self forKeyPath:@"currentDevice.adjustingWhiteBalance" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionWhiteBalanceObserverContext];
 //    [self addObserver:self forKeyPath:@"currentDevice.flashMode" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionFlashModeObserverContext];
 //    [self addObserver:self forKeyPath:@"currentDevice.torchMode" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionTorchModeObserverContext];
@@ -905,8 +905,8 @@ typedef void (^PBJVisionBlock)();
         return;
     
     // current device KVO notifications
-//    [self removeObserver:self forKeyPath:@"currentDevice.adjustingFocus"];
-//    [self removeObserver:self forKeyPath:@"currentDevice.adjustingExposure"];
+    [self removeObserver:self forKeyPath:@"currentDevice.adjustingFocus"];
+    [self removeObserver:self forKeyPath:@"currentDevice.adjustingExposure"];
 //    [self removeObserver:self forKeyPath:@"currentDevice.adjustingWhiteBalance"];
 //    [self removeObserver:self forKeyPath:@"currentDevice.flashMode"];
 //    [self removeObserver:self forKeyPath:@"currentDevice.torchMode"];
@@ -1463,8 +1463,10 @@ typedef void (^PBJVisionBlock)();
 // focusExposeAndAdjustWhiteBalanceAtAdjustedPoint: will put focus and exposure into auto
 - (void)focusExposeAndAdjustWhiteBalanceAtAdjustedPoint:(CGPoint)adjustedPoint
 {
-    if ([_currentDevice isAdjustingFocus] || [_currentDevice isAdjustingExposure])
+    if ([_currentDevice isAdjustingFocus] || [_currentDevice isAdjustingExposure]) {
+        NSLog(@"***SKIPPING ADJUSTMENT");
         return;
+    }
 
     NSError *error = nil;
     if ([_currentDevice lockForConfiguration:&error]) {
