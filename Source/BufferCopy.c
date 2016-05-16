@@ -8,6 +8,7 @@
 
 #include "BufferCopy.h"
 #include <string.h>
+#include <arm_neon.h>
 
 void CopyBufferNV12(uint8_t * __restrict srcY, uint8_t * __restrict srcUV, size_t srcYRowBytes, size_t srcUVRowBytes,
                            uint8_t * __restrict dstY, uint8_t * __restrict dstUV, size_t dstYRowBytes, size_t dstUVRowBytes,
@@ -71,3 +72,65 @@ void CopyBufferNV12Mirror(uint8_t * __restrict srcY, uint8_t * __restrict srcUV,
         dstUV16 += dstUVRowBytes/2;
     }
 }
+
+#if 0
+// doesn't auto-vectorize at all
+uint32_t Luminance(uint8_t *Y, size_t YRowBytes, size_t width, size_t height)
+{
+    size_t i;
+    size_t j;
+    uint32_t luminance = 0;
+
+    for (i = 0; i < height; i++)
+    {
+        uint8_t *y = Y;
+#pragma clang loop vectorize(enable) interleave(enable)
+        for (j = 0; j < width; j++)
+        {
+            luminance += y++;
+        }
+        Y += YRowBytes;
+    }
+
+    return (luminance);
+}
+#endif
+
+uint32_t Luminance(uint8_t *Y, size_t YRowBytes, size_t width, size_t height)
+{
+    size_t i, j, overrun;
+    uint32_t luminance = 0;
+    uint32x4_t lumAccumulation = {0};
+
+    overrun = width & 0xF;
+
+    for (i = 0; i < height; i++)
+    {
+        uint8_t *y = Y;
+        uint16x8_t rowLumAccumulation = {0};
+
+        for (j = 0; j <= (width-16); j+=16)
+        {
+            uint8x16_t yVec = vld1q_u8(y);
+            rowLumAccumulation = vpadalq_u8(rowLumAccumulation, yVec);
+            y += 16;
+        }
+
+        // past vector end if needed
+        for (j = 0; j < overrun; j++)
+        {
+            luminance += y++;
+        }
+
+        lumAccumulation = vpadalq_u16(lumAccumulation, rowLumAccumulation);
+        Y+= YRowBytes;
+    }
+
+    luminance += vgetq_lane_u32(lumAccumulation, 0);
+    luminance += vgetq_lane_u32(lumAccumulation, 1);
+    luminance += vgetq_lane_u32(lumAccumulation, 2);
+    luminance += vgetq_lane_u32(lumAccumulation, 3);
+
+    return (luminance/(width*height));
+}
+
