@@ -2824,13 +2824,13 @@ typedef void (^PBJVisionBlock)();
     {
         CopyBufferNV12Mirror(srcYBase, srcUVBase, _pixelBufferInfo.srcYRowBytes,
                              _pixelBufferInfo.srcUVRowBytes, dstYBase, dstUVBase, _pixelBufferInfo.dstYRowBytes,
-                             _pixelBufferInfo.dstUVRowBytes, _pixelBufferInfo.dstHeight, _pixelBufferInfo.dstWidth);
+                             _pixelBufferInfo.dstUVRowBytes, _pixelBufferInfo.dstWidth, _pixelBufferInfo.dstHeight);
     }
     else
     {
         CopyBufferNV12        (srcYBase, srcUVBase, _pixelBufferInfo.srcYRowBytes,
                              _pixelBufferInfo.srcUVRowBytes, dstYBase, dstUVBase, _pixelBufferInfo.dstYRowBytes,
-                             _pixelBufferInfo.dstUVRowBytes, _pixelBufferInfo.dstHeight, _pixelBufferInfo.dstWidth);
+                             _pixelBufferInfo.dstUVRowBytes, _pixelBufferInfo.dstWidth, _pixelBufferInfo.dstHeight);
     }
 
 
