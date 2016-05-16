@@ -8,7 +8,10 @@
 
 #include "BufferCopy.h"
 #include <string.h>
+
+#ifdef __ARM_NEON
 #include <arm_neon.h>
+#endif
 
 void CopyBufferNV12(uint8_t * __restrict srcY, uint8_t * __restrict srcUV, size_t srcYRowBytes, size_t srcUVRowBytes,
                            uint8_t * __restrict dstY, uint8_t * __restrict dstUV, size_t dstYRowBytes, size_t dstUVRowBytes,
@@ -73,28 +76,7 @@ void CopyBufferNV12Mirror(uint8_t * __restrict srcY, uint8_t * __restrict srcUV,
     }
 }
 
-#if 0
-// doesn't auto-vectorize at all
-uint32_t Luminance(uint8_t *Y, size_t YRowBytes, size_t width, size_t height)
-{
-    size_t i;
-    size_t j;
-    uint32_t luminance = 0;
-
-    for (i = 0; i < height; i++)
-    {
-        uint8_t *y = Y;
-#pragma clang loop vectorize(enable) interleave(enable)
-        for (j = 0; j < width; j++)
-        {
-            luminance += y++;
-        }
-        Y += YRowBytes;
-    }
-
-    return (luminance);
-}
-#endif
+#ifdef __ARM_NEON
 
 uint32_t Luminance(uint8_t *Y, size_t YRowBytes, size_t width, size_t height)
 {
@@ -133,4 +115,28 @@ uint32_t Luminance(uint8_t *Y, size_t YRowBytes, size_t width, size_t height)
 
     return (luminance/(width*height));
 }
+
+#else
+
+uint32_t Luminance(uint8_t *Y, size_t YRowBytes, size_t width, size_t height)
+{
+    size_t i;
+    size_t j;
+    uint32_t luminance = 0;
+
+    for (i = 0; i < height; i++)
+    {
+        uint8_t *y = Y;
+#pragma clang loop vectorize(enable) interleave(enable)
+        for (j = 0; j < width; j++)
+        {
+            luminance += y++;
+        }
+        Y += YRowBytes;
+    }
+
+    return (luminance);
+}
+#endif
+
 
