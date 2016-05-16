@@ -135,7 +135,7 @@ uint32_t Luminance(uint8_t *Y, size_t YRowBytes, size_t width, size_t height)
         Y += YRowBytes;
     }
 
-    return (luminance);
+    return (luminance/(width*height));;
 }
 #endif
 
