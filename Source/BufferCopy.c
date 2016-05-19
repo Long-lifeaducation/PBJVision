@@ -101,7 +101,7 @@ uint32_t Luminance(uint8_t *Y, size_t YRowBytes, size_t width, size_t height)
         // past vector end if needed
         for (j = 0; j < overrun; j++)
         {
-            luminance += y++;
+            luminance += *y++;
         }
 
         lumAccumulation = vpadalq_u16(lumAccumulation, rowLumAccumulation);
