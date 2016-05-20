@@ -183,6 +183,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
     // light detection
     BOOL _didDetectLowLightSituation;
+    NSMutableArray *_luminanceValues;
     CMTime _lightDetectionPeriod;
     CMTime _lastLightDetectTimestamp;
      uint64_t _recordedLuminanceSum;
@@ -742,6 +743,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         
         _filterManager = [[VideoFilterManager alloc] init];
 
+        _luminanceValues = [[NSMutableArray alloc] init];
         _detectLowLight = NO;
         _didDetectLowLightSituation = NO;
         _lastLightDetectTimestamp = kCMTimeInvalid;
@@ -1850,6 +1852,7 @@ typedef void (^PBJVisionBlock)();
         _flags.interrupted = NO;
         _flags.videoWritten = NO;
 
+        [_luminanceValues removeAllObjects];
         _lastLightDetectTimestamp = kCMTimeInvalid;
         memset(_luminances,0,sizeof(_luminances));
         _recordedLuminanceSum = 0;
@@ -2165,8 +2168,6 @@ typedef void (^PBJVisionBlock)();
             _lastAudioTimestamp = time;
         }
     }
-    
-    currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     
     if (!_flags.interrupted && CMTIME_IS_VALID(currentTimestamp) && CMTIME_IS_VALID(_startTimestamp) && CMTIME_IS_VALID(_maximumCaptureDuration)) {
         
@@ -2819,7 +2820,7 @@ typedef void (^PBJVisionBlock)();
         return;
     }
 
-    int avgLuminance = _recordedLuminanceSum / numberSamples;
+    int avgLuminance = (int)(_recordedLuminanceSum / numberSamples);
     if (!_didDetectLowLightSituation && avgLuminance < 80)
     {
         _didDetectLowLightSituation = YES;
@@ -2937,6 +2938,18 @@ typedef void (^PBJVisionBlock)();
         CopyBufferNV12        (srcYBase, srcUVBase, _pixelBufferInfo.srcYRowBytes,
                              _pixelBufferInfo.srcUVRowBytes, dstYBase, dstUVBase, _pixelBufferInfo.dstYRowBytes,
                              _pixelBufferInfo.dstUVRowBytes, _pixelBufferInfo.dstWidth, _pixelBufferInfo.dstHeight);
+    }
+
+    CMTime timeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+
+    if (_detectLowLight &&  (!CMTIME_IS_VALID(_lastLightDetectTimestamp)
+        || CMTIME_COMPARE_INLINE(CMTimeSubtract(timeStamp, _lastLightDetectTimestamp), >, _lightDetectionPeriod)))
+    {
+        int luminance = Luminance(srcYBase, _pixelBufferInfo.srcYRowBytes, _pixelBufferInfo.dstWidth, _pixelBufferInfo.dstHeight);
+
+        [_luminanceValues addObject:[NSNumber numberWithInt:luminance]];
+
+        _lastLightDetectTimestamp = timeStamp;
     }
 
 
