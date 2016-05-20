@@ -180,6 +180,14 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     GPUImageFilter *mirrorFilter;
 
     CMVideoDimensions _videoDimensions;
+
+    // light detection
+    BOOL _didDetectLowLightSituation;
+    CMTime _lightDetectionPeriod;
+    CMTime _lastLightDetectTimestamp;
+     uint64_t _recordedLuminanceSum;
+    int _luminances[5]; // for running average
+    int _luminanceSamples;
     
     // flags
     
@@ -246,6 +254,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @synthesize videoGopDuration = _videoGopDuration;
 @synthesize additionalCompressionProperties = _additionalCompressionProperties;
 @synthesize maximumCaptureDuration = _maximumCaptureDuration;
+@synthesize detectLowLight = _detectLowLight;
 
 + (NSString*)hardwareString
 {
@@ -732,6 +741,15 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidEnterBackground:) name:@"UIApplicationWillResignActiveNotification" object:[UIApplication sharedApplication]];
         
         _filterManager = [[VideoFilterManager alloc] init];
+
+        _detectLowLight = NO;
+        _didDetectLowLightSituation = NO;
+        _lastLightDetectTimestamp = kCMTimeInvalid;
+        _luminanceSamples = 0;
+
+        _lightDetectionPeriod = CMTimeMake(600,600); // one second
+
+        _recordedLuminanceSum = 0;
     }
     return self;
 }
@@ -1246,6 +1264,12 @@ typedef void (^PBJVisionBlock)();
 - (void)startPreview
 {
     [self _enqueueBlockOnCaptureVideoQueue:^{
+
+        _lastLightDetectTimestamp = kCMTimeInvalid;
+        memset(_luminances,0,sizeof(_luminances));
+        _recordedLuminanceSum = 0;
+        _luminanceSamples = 0;
+
         [self clearPreviewView];
         
         [self _enqueueBlockOnMainQueue:^{
@@ -1827,6 +1851,11 @@ typedef void (^PBJVisionBlock)();
         _flags.paused = NO;
         _flags.interrupted = NO;
         _flags.videoWritten = NO;
+
+        _lastLightDetectTimestamp = kCMTimeInvalid;
+        memset(_luminances,0,sizeof(_luminances));
+        _recordedLuminanceSum = 0;
+        _luminanceSamples = 0;
         
         [self _enqueueBlockOnMainQueue:^{                
             if ([_delegate respondsToSelector:@selector(visionDidStartVideoCapture:)])
@@ -2084,6 +2113,11 @@ typedef void (^PBJVisionBlock)();
     }
     
     if (isVideo && sampleBuffer) {
+
+        if (!_flags.recording && _detectLowLight)
+        {
+            [self _DetectPreviewLuminance:sampleBuffer];
+        }
 
 
         if (_flags.recording && !_flags.paused && CMTIME_IS_INVALID(_lastPauseTimestamp) && !_flags.interrupted /*&& (!_flags.videoWritten || CMTIME_COMPARE_INLINE(time, >=, _mediaWriter.videoTimestamp))*/)
@@ -2573,7 +2607,6 @@ typedef void (^PBJVisionBlock)();
     }
 
     BOOL mirror = NO;
-    CVPixelBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
 
     // manual mirroring!
     if (_cameraDevice == PBJCameraDeviceFront)
@@ -2636,7 +2669,7 @@ typedef void (^PBJVisionBlock)();
     }
 
 
-    [self _copyPixelBufferToOutput:renderedOutputPixelBuffer fromSrc:imageBuffer withMirror:mirror];
+    [self _copyBufferToOutput:renderedOutputPixelBuffer fromSrc:sampleBuffer withMirror:mirror];
     [_mediaWriter writeSampleBuffer:nil ofType:AVMediaTypeVideo withPixelBuffer:renderedOutputPixelBuffer atTimestamp:time withDuration:duration];
     _flags.videoWritten = YES;
     _recordedFrameCount++;
@@ -2742,9 +2775,82 @@ typedef void (^PBJVisionBlock)();
 
 }
 
-- (void)_copyPixelBufferToOutput:(CVPixelBufferRef)dst fromSrc:(CVPixelBufferRef)src withMirror:(BOOL)mirror
+- (void)_DetectPreviewLuminance:(CMSampleBufferRef)sampleBuffer
 {
-    // crop rect
+    if (!_detectLowLight)
+    {
+        return;
+    }
+
+    CMTime timeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+
+    if (CMTIME_IS_VALID(_lastLightDetectTimestamp)
+        && CMTIME_COMPARE_INLINE(CMTimeSubtract(timeStamp, _lastLightDetectTimestamp), <, _lightDetectionPeriod))
+    {
+        return;
+    }
+
+    _lastLightDetectTimestamp = timeStamp;
+
+    CVPixelBufferRef src = CMSampleBufferGetImageBuffer(sampleBuffer);
+    int luminance;
+
+    CVPixelBufferLockBaseAddress(src, kCVPixelBufferLock_ReadOnly);
+
+    // we only use the Y plane to calculate luminance
+    uint8_t *Y = CVPixelBufferGetBaseAddressOfPlane(src,0);
+    size_t yRowBytes = CVPixelBufferGetBytesPerRowOfPlane(src,0);
+    size_t width = CVPixelBufferGetWidthOfPlane(src, 0);
+    size_t height = CVPixelBufferGetHeightOfPlane(src, 0);
+
+    luminance = Luminance(Y, yRowBytes, width, height);
+
+    CVPixelBufferUnlockBaseAddress(src, kCVPixelBufferLock_ReadOnly);
+
+    static const int numberSamples = (sizeof(_luminances)/sizeof(_luminances[0]));
+
+    int luminanceIndex = _luminanceSamples % numberSamples;
+    _recordedLuminanceSum -= _luminances[luminanceIndex];
+    _recordedLuminanceSum += luminance;
+    _luminances[luminanceIndex] = luminance;
+    _luminanceSamples++;
+
+    // bail here if we don't have enough luminance samples
+    if (_luminanceSamples < numberSamples)
+    {
+        return;
+    }
+
+    int avgLuminance = _recordedLuminanceSum / numberSamples;
+    if (!_didDetectLowLightSituation && avgLuminance < 80)
+    {
+        _didDetectLowLightSituation = YES;
+
+        // let the delegate know
+        [self _enqueueBlockOnMainQueue:^{
+            if ([_delegate respondsToSelector:@selector(visionDidDetectLowLightSituation:)]) {
+                [_delegate visionDidDetectLowLightSituation:self];
+            }
+        }];
+    }
+    else if (_didDetectLowLightSituation && avgLuminance > 100)
+    {
+        _didDetectLowLightSituation = NO;
+
+        // let the delegate know we recovered
+        [self _enqueueBlockOnMainQueue:^{
+            if ([_delegate respondsToSelector:@selector(visionDidEndLowLightSituation:)]) {
+                [_delegate visionDidEndLowLightSituation:self];
+            }
+        }];
+
+    }
+
+}
+
+- (void)_copyBufferToOutput:(CVPixelBufferRef)dst fromSrc:(CMSampleBufferRef)sampleBuffer withMirror:(BOOL)mirror
+{
+    CVPixelBufferRef src = CMSampleBufferGetImageBuffer(sampleBuffer);
     CVPixelBufferLockBaseAddress(dst, 0);
     CVPixelBufferLockBaseAddress(src, kCVPixelBufferLock_ReadOnly);
 
