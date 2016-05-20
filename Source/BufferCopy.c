@@ -84,6 +84,11 @@ uint32_t Luminance(uint8_t *Y, size_t YRowBytes, size_t width, size_t height)
     uint32_t luminance = 0;
     uint32x4_t lumAccumulation = {0};
 
+    if (!width || !height)
+    {
+        return 0;
+    }
+
     overrun = width & 0xF;
 
     for (i = 0; i < height; i++)
