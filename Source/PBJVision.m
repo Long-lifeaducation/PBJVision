@@ -256,6 +256,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @synthesize additionalCompressionProperties = _additionalCompressionProperties;
 @synthesize maximumCaptureDuration = _maximumCaptureDuration;
 @synthesize detectLowLight = _detectLowLight;
+@synthesize luminanceValues = _luminanceValues;
 
 + (NSString*)hardwareString
 {
@@ -743,7 +744,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         
         _filterManager = [[VideoFilterManager alloc] init];
 
-        _luminanceValues = [[NSMutableArray alloc] init];
         _detectLowLight = NO;
         _didDetectLowLightSituation = NO;
         _lastLightDetectTimestamp = kCMTimeInvalid;
@@ -1852,7 +1852,7 @@ typedef void (^PBJVisionBlock)();
         _flags.interrupted = NO;
         _flags.videoWritten = NO;
 
-        [_luminanceValues removeAllObjects];
+        _luminanceValues = [[NSMutableArray alloc] init];
         _lastLightDetectTimestamp = kCMTimeInvalid;
         memset(_luminances,0,sizeof(_luminances));
         _recordedLuminanceSum = 0;
