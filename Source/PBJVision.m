@@ -182,13 +182,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     CMVideoDimensions _videoDimensions;
 
     // light detection
-    BOOL _didDetectLowLightSituation;
     NSMutableArray *_luminanceValues;
     CMTime _lightDetectionPeriod;
     CMTime _lastLightDetectTimestamp;
-     uint64_t _recordedLuminanceSum;
-    int _luminances[5]; // for running average
-    int _luminanceSamples;
     
     // flags
     
@@ -745,13 +741,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         _filterManager = [[VideoFilterManager alloc] init];
 
         _detectLowLight = NO;
-        _didDetectLowLightSituation = NO;
         _lastLightDetectTimestamp = kCMTimeInvalid;
-        _luminanceSamples = 0;
 
         _lightDetectionPeriod = CMTimeMake(600,600); // one second
-
-        _recordedLuminanceSum = 0;
     }
     return self;
 }
@@ -1268,9 +1260,6 @@ typedef void (^PBJVisionBlock)();
     [self _enqueueBlockOnCaptureVideoQueue:^{
 
         _lastLightDetectTimestamp = kCMTimeInvalid;
-        memset(_luminances,0,sizeof(_luminances));
-        _recordedLuminanceSum = 0;
-        _luminanceSamples = 0;
 
         [self clearPreviewView];
         
@@ -1854,9 +1843,6 @@ typedef void (^PBJVisionBlock)();
 
         _luminanceValues = [[NSMutableArray alloc] init];
         _lastLightDetectTimestamp = kCMTimeInvalid;
-        memset(_luminances,0,sizeof(_luminances));
-        _recordedLuminanceSum = 0;
-        _luminanceSamples = 0;
         
         [self _enqueueBlockOnMainQueue:^{                
             if ([_delegate respondsToSelector:@selector(visionDidStartVideoCapture:)])
@@ -2114,11 +2100,6 @@ typedef void (^PBJVisionBlock)();
     }
     
     if (isVideo && sampleBuffer) {
-
-        if (!_flags.recording && _detectLowLight)
-        {
-            [self _DetectPreviewLuminance:sampleBuffer];
-        }
 
 
         if (_flags.recording && !_flags.paused && CMTIME_IS_INVALID(_lastPauseTimestamp) && !_flags.interrupted /*&& (!_flags.videoWritten || CMTIME_COMPARE_INLINE(time, >=, _mediaWriter.videoTimestamp))*/)
@@ -2774,78 +2755,6 @@ typedef void (^PBJVisionBlock)();
 
 }
 
-- (void)_DetectPreviewLuminance:(CMSampleBufferRef)sampleBuffer
-{
-    if (!_detectLowLight)
-    {
-        return;
-    }
-
-    CMTime timeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-
-    if (CMTIME_IS_VALID(_lastLightDetectTimestamp)
-        && CMTIME_COMPARE_INLINE(CMTimeSubtract(timeStamp, _lastLightDetectTimestamp), <, _lightDetectionPeriod))
-    {
-        return;
-    }
-
-    _lastLightDetectTimestamp = timeStamp;
-
-    CVPixelBufferRef src = CMSampleBufferGetImageBuffer(sampleBuffer);
-    int luminance;
-
-    CVPixelBufferLockBaseAddress(src, kCVPixelBufferLock_ReadOnly);
-
-    // we only use the Y plane to calculate luminance
-    uint8_t *Y = CVPixelBufferGetBaseAddressOfPlane(src,0);
-    size_t yRowBytes = CVPixelBufferGetBytesPerRowOfPlane(src,0);
-    size_t width = CVPixelBufferGetWidthOfPlane(src, 0);
-    size_t height = CVPixelBufferGetHeightOfPlane(src, 0);
-
-    luminance = Luminance(Y, yRowBytes, width, height);
-
-    CVPixelBufferUnlockBaseAddress(src, kCVPixelBufferLock_ReadOnly);
-
-    static const int numberSamples = (sizeof(_luminances)/sizeof(_luminances[0]));
-
-    int luminanceIndex = _luminanceSamples % numberSamples;
-    _recordedLuminanceSum -= _luminances[luminanceIndex];
-    _recordedLuminanceSum += luminance;
-    _luminances[luminanceIndex] = luminance;
-    _luminanceSamples++;
-
-    // bail here if we don't have enough luminance samples
-    if (_luminanceSamples < numberSamples)
-    {
-        return;
-    }
-
-    int avgLuminance = (int)(_recordedLuminanceSum / numberSamples);
-    if (!_didDetectLowLightSituation && avgLuminance < 80)
-    {
-        _didDetectLowLightSituation = YES;
-
-        // let the delegate know
-        [self _enqueueBlockOnMainQueue:^{
-            if ([_delegate respondsToSelector:@selector(visionDidDetectLowLightSituation:)]) {
-                [_delegate visionDidDetectLowLightSituation:self];
-            }
-        }];
-    }
-    else if (_didDetectLowLightSituation && avgLuminance > 100)
-    {
-        _didDetectLowLightSituation = NO;
-
-        // let the delegate know we recovered
-        [self _enqueueBlockOnMainQueue:^{
-            if ([_delegate respondsToSelector:@selector(visionDidEndLowLightSituation:)]) {
-                [_delegate visionDidEndLowLightSituation:self];
-            }
-        }];
-
-    }
-
-}
 
 - (void)_copyBufferToOutput:(CVPixelBufferRef)dst fromSrc:(CMSampleBufferRef)sampleBuffer withMirror:(BOOL)mirror
 {
