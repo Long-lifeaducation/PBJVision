@@ -226,6 +226,9 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 // this determines whether we display video with PBJ or GPUImage
 @property (nonatomic) BOOL isFilterEnabled;
 
+// this determines whether or not we do low light detection for video
+@property (nonatomic, getter=isDetectingLowLight) BOOL detectLowLight;
+
 @property (nonatomic, readonly) EAGLContext *context;
 @property (nonatomic, readonly) EAGLContext *contextPreview;
 @property (nonatomic) CGRect presentationFrame;
@@ -233,6 +236,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 @property (nonatomic) CMTime maximumCaptureDuration; // automatically triggers vision:capturedVideo:error: after exceeding threshold, (kCMTimeInvalid records without threshold)
 @property (nonatomic, readonly) Float64 capturedAudioSeconds;
 @property (nonatomic, readonly) Float64 capturedVideoSeconds;
+
+@property (nonatomic, readonly) NSMutableArray *luminanceValues;
 
 - (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp;
 - (void)setAudioStopTimestamp:(CMTime)audioStopTimestamp;
@@ -320,5 +325,11 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 
 - (void)vision:(PBJVision *)vision didCaptureVideoSampleBuffer:(CMSampleBufferRef)sampleBuffer;
 - (void)vision:(PBJVision *)vision didCaptureAudioSample:(CMSampleBufferRef)sampleBuffer;
+
+
+// Smule extensions
+
+- (void)visionDidDetectLowLightSituation:(PBJVision *)vision;
+- (void)visionDidEndLowLightSituation:(PBJVision *)vision;
 
 @end

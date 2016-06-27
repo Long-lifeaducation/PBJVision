@@ -180,6 +180,11 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     GPUImageFilter *mirrorFilter;
 
     CMVideoDimensions _videoDimensions;
+
+    // light detection
+    NSMutableArray *_luminanceValues;
+    CMTime _lightDetectionPeriod;
+    CMTime _lastLightDetectTimestamp;
     
     // flags
     
@@ -246,6 +251,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @synthesize videoGopDuration = _videoGopDuration;
 @synthesize additionalCompressionProperties = _additionalCompressionProperties;
 @synthesize maximumCaptureDuration = _maximumCaptureDuration;
+@synthesize detectLowLight = _detectLowLight;
+@synthesize luminanceValues = _luminanceValues;
 
 + (NSString*)hardwareString
 {
@@ -732,6 +739,11 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidEnterBackground:) name:@"UIApplicationWillResignActiveNotification" object:[UIApplication sharedApplication]];
         
         _filterManager = [[VideoFilterManager alloc] init];
+
+        _detectLowLight = NO;
+        _lastLightDetectTimestamp = kCMTimeInvalid;
+
+        _lightDetectionPeriod = CMTimeMake(600,600); // one second
     }
     return self;
 }
@@ -1246,6 +1258,9 @@ typedef void (^PBJVisionBlock)();
 - (void)startPreview
 {
     [self _enqueueBlockOnCaptureVideoQueue:^{
+
+        _lastLightDetectTimestamp = kCMTimeInvalid;
+
         [self clearPreviewView];
         
         [self _enqueueBlockOnMainQueue:^{
@@ -1825,6 +1840,9 @@ typedef void (^PBJVisionBlock)();
         _flags.paused = NO;
         _flags.interrupted = NO;
         _flags.videoWritten = NO;
+
+        _luminanceValues = [[NSMutableArray alloc] init];
+        _lastLightDetectTimestamp = kCMTimeInvalid;
         
         [self _enqueueBlockOnMainQueue:^{                
             if ([_delegate respondsToSelector:@selector(visionDidStartVideoCapture:)])
@@ -2131,8 +2149,6 @@ typedef void (^PBJVisionBlock)();
             _lastAudioTimestamp = time;
         }
     }
-    
-    currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     
     if (!_flags.interrupted && CMTIME_IS_VALID(currentTimestamp) && CMTIME_IS_VALID(_startTimestamp) && CMTIME_IS_VALID(_maximumCaptureDuration)) {
         
@@ -2571,7 +2587,6 @@ typedef void (^PBJVisionBlock)();
     }
 
     BOOL mirror = NO;
-    CVPixelBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
 
     // manual mirroring!
     if (_cameraDevice == PBJCameraDeviceFront)
@@ -2634,7 +2649,7 @@ typedef void (^PBJVisionBlock)();
     }
 
 
-    [self _copyPixelBufferToOutput:renderedOutputPixelBuffer fromSrc:imageBuffer withMirror:mirror];
+    [self _copyBufferToOutput:renderedOutputPixelBuffer fromSrc:sampleBuffer withMirror:mirror];
     [_mediaWriter writeSampleBuffer:nil ofType:AVMediaTypeVideo withPixelBuffer:renderedOutputPixelBuffer atTimestamp:time withDuration:duration];
     _flags.videoWritten = YES;
     _recordedFrameCount++;
@@ -2740,9 +2755,10 @@ typedef void (^PBJVisionBlock)();
 
 }
 
-- (void)_copyPixelBufferToOutput:(CVPixelBufferRef)dst fromSrc:(CVPixelBufferRef)src withMirror:(BOOL)mirror
+
+- (void)_copyBufferToOutput:(CVPixelBufferRef)dst fromSrc:(CMSampleBufferRef)sampleBuffer withMirror:(BOOL)mirror
 {
-    // crop rect
+    CVPixelBufferRef src = CMSampleBufferGetImageBuffer(sampleBuffer);
     CVPixelBufferLockBaseAddress(dst, 0);
     CVPixelBufferLockBaseAddress(src, kCVPixelBufferLock_ReadOnly);
 
@@ -2831,6 +2847,18 @@ typedef void (^PBJVisionBlock)();
         CopyBufferNV12        (srcYBase, srcUVBase, _pixelBufferInfo.srcYRowBytes,
                              _pixelBufferInfo.srcUVRowBytes, dstYBase, dstUVBase, _pixelBufferInfo.dstYRowBytes,
                              _pixelBufferInfo.dstUVRowBytes, _pixelBufferInfo.dstWidth, _pixelBufferInfo.dstHeight);
+    }
+
+    CMTime timeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+
+    if (_detectLowLight &&  (!CMTIME_IS_VALID(_lastLightDetectTimestamp)
+        || CMTIME_COMPARE_INLINE(CMTimeSubtract(timeStamp, _lastLightDetectTimestamp), >, _lightDetectionPeriod)))
+    {
+        int luminance = Luminance(srcYBase, _pixelBufferInfo.srcYRowBytes, _pixelBufferInfo.dstWidth, _pixelBufferInfo.dstHeight);
+
+        [_luminanceValues addObject:[NSNumber numberWithInt:luminance]];
+
+        _lastLightDetectTimestamp = timeStamp;
     }
 
 
