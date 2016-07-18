@@ -738,7 +738,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationWillEnterForeground:) name:@"UIApplicationWillEnterForegroundNotification" object:[UIApplication sharedApplication]];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidEnterBackground:) name:@"UIApplicationWillResignActiveNotification" object:[UIApplication sharedApplication]];
         
-        _filterManager = [[VideoFilterManager alloc] init];
+        _filterManager = [VideoFilterManager sharedInstance];
 
         _detectLowLight = NO;
         _lastLightDetectTimestamp = kCMTimeInvalid;
