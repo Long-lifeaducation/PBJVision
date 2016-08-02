@@ -119,7 +119,7 @@ static CGFloat const PBJVideoBitRate960x540 = 3750000 * 8;      // 30mbps
 static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 
 @class EAGLContext;
-@class GPUImageView;
+@class GPUImageView, VideoFilterManager;
 @protocol PBJVisionDelegate;
 @interface PBJVision : NSObject
 
@@ -129,6 +129,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 @property CGFloat filterOffset;
 
 @property (nonatomic, weak) id<PBJVisionDelegate> delegate;
+
+- (VideoFilterManager*)getFilterManager;
 
 // session
 

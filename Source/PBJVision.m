@@ -30,6 +30,7 @@
 #import "VideoFilterManager.h"
 #import "GPUImageSplitFilter.h"
 #include "BufferCopy.h"
+#import "FilterInputDelegate.h"
 
 #import <ImageIO/ImageIO.h>
 #import <OpenGLES/EAGL.h>
@@ -97,6 +98,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @interface PBJVision () <
     AVCaptureAudioDataOutputSampleBufferDelegate,
     AVCaptureVideoDataOutputSampleBufferDelegate,
+    AVCaptureMetadataOutputObjectsDelegate,
     PBJMediaWriterDelegate>
 {
     // AV
@@ -185,6 +187,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     NSMutableArray *_luminanceValues;
     CMTime _lightDetectionPeriod;
     CMTime _lastLightDetectTimestamp;
+    
+    // face detection
+    AVCaptureMetadataOutput *metadataOutput;
     
     // flags
     
@@ -746,6 +751,10 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         _lightDetectionPeriod = CMTimeMake(600,600); // one second
     }
     return self;
+}
+
+- (VideoFilterManager*)getFilterManager {
+    return self.filterManager;
 }
 
 - (void)dealloc
@@ -1811,6 +1820,21 @@ typedef void (^PBJVisionBlock)();
     dispatch_queue_t callbackQueue = dispatch_queue_create( "PBJVisionMediaWriterCallback", DISPATCH_QUEUE_SERIAL );
     [_mediaWriter setDelegate:self callbackQueue:callbackQueue];
 
+    metadataOutput = [[AVCaptureMetadataOutput alloc] init];
+    [metadataOutput setMetadataObjectsDelegate:self queue:callbackQueue];
+    
+    if ([_captureSession canAddOutput:metadataOutput])
+    {
+        [_captureSession addOutput:metadataOutput];
+        [metadataOutput setMetadataObjectTypes:@[AVMetadataObjectTypeFace]];
+        NSLog(@"adding video metadata output capture");
+    }
+    else
+    {
+        NSLog(@"Couldn't add metadata output");
+    }
+
+    
     AVCaptureConnection *videoConnection = [_captureOutputVideo connectionWithMediaType:AVMediaTypeVideo];
     [self _setOrientationForConnection:videoConnection];
 
@@ -2190,6 +2214,23 @@ typedef void (^PBJVisionBlock)();
     }
 #endif
 }
+
+#pragma mark AVCaptureMetadataOutputSampleBufferDelegate
+
+- (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputMetadataObjects:(NSArray *)metadataObjects fromConnection:(AVCaptureConnection *)connection
+{
+    for(AVMetadataObject *metadataObject in metadataObjects)
+    {
+        if([metadataObject.type isEqualToString:AVMetadataObjectTypeFace])
+        {
+            CGRect rect = metadataObject.bounds;
+            NSLog(@"%@", NSStringFromCGRect(rect));
+            FilterInputDelegate* delegate = [FilterInputDelegate sharedInstance];
+            [delegate setFace:rect time:0];
+        }
+    }
+}
+
 
 - (void)calculateFramerateAtTimestamp:(CMTime)timestamp
 {
