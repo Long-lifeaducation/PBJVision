@@ -2224,7 +2224,7 @@ typedef void (^PBJVisionBlock)();
         if([metadataObject.type isEqualToString:AVMetadataObjectTypeFace])
         {
             CGRect rect = metadataObject.bounds;
-            NSLog(@"%@", NSStringFromCGRect(rect));
+            //NSLog(@"%@", NSStringFromCGRect(rect));
             FilterInputDelegate* delegate = [FilterInputDelegate sharedInstance];
             [delegate setFace:rect time:0];
         }
