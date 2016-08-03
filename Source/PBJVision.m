@@ -1266,6 +1266,20 @@ typedef void (^PBJVisionBlock)();
 
 - (void)startPreview
 {
+    metadataOutput = [[AVCaptureMetadataOutput alloc] init];
+    [metadataOutput setMetadataObjectsDelegate:self queue:_captureVideoDispatchQueue];
+    
+    if ([_captureSession canAddOutput:metadataOutput])
+    {
+        [_captureSession addOutput:metadataOutput];
+        [metadataOutput setMetadataObjectTypes:@[AVMetadataObjectTypeFace]];
+        NSLog(@"adding video metadata output capture");
+    }
+    else
+    {
+        NSLog(@"Couldn't add metadata output");
+    }
+    
     [self _enqueueBlockOnCaptureVideoQueue:^{
 
         _lastLightDetectTimestamp = kCMTimeInvalid;
@@ -1819,21 +1833,6 @@ typedef void (^PBJVisionBlock)();
 
     dispatch_queue_t callbackQueue = dispatch_queue_create( "PBJVisionMediaWriterCallback", DISPATCH_QUEUE_SERIAL );
     [_mediaWriter setDelegate:self callbackQueue:callbackQueue];
-
-    metadataOutput = [[AVCaptureMetadataOutput alloc] init];
-    [metadataOutput setMetadataObjectsDelegate:self queue:callbackQueue];
-    
-    if ([_captureSession canAddOutput:metadataOutput])
-    {
-        [_captureSession addOutput:metadataOutput];
-        [metadataOutput setMetadataObjectTypes:@[AVMetadataObjectTypeFace]];
-        NSLog(@"adding video metadata output capture");
-    }
-    else
-    {
-        NSLog(@"Couldn't add metadata output");
-    }
-
     
     AVCaptureConnection *videoConnection = [_captureOutputVideo connectionWithMediaType:AVMediaTypeVideo];
     [self _setOrientationForConnection:videoConnection];
