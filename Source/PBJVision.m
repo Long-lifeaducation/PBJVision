@@ -1443,9 +1443,6 @@ typedef void (^PBJVisionBlock)();
 
 - (void)exposeAtAdjustedPointOfInterest:(CGPoint)adjustedPoint
 {
-    if ([_currentDevice isAdjustingExposure])
-        return;
-
     NSError *error = nil;
     if ([_currentDevice lockForConfiguration:&error]) {
     
