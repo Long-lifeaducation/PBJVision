@@ -1266,19 +1266,6 @@ typedef void (^PBJVisionBlock)();
 
 - (void)startPreview
 {
-    metadataOutput = [[AVCaptureMetadataOutput alloc] init];
-    [metadataOutput setMetadataObjectsDelegate:self queue:_captureVideoDispatchQueue];
-    
-    if ([_captureSession canAddOutput:metadataOutput])
-    {
-        [_captureSession addOutput:metadataOutput];
-        [metadataOutput setMetadataObjectTypes:@[AVMetadataObjectTypeFace]];
-        NSLog(@"adding video metadata output capture");
-    }
-    else
-    {
-        NSLog(@"Couldn't add metadata output");
-    }
     
     [self _enqueueBlockOnCaptureVideoQueue:^{
 
@@ -1296,6 +1283,20 @@ typedef void (^PBJVisionBlock)();
     [self _enqueueBlockOnCaptureSessionQueue:^{
         [self _setupCamera];
         [self _setupSession];
+
+        // add callback for metadata (face detection) callback
+        metadataOutput = [[AVCaptureMetadataOutput alloc] init];
+        [metadataOutput setMetadataObjectsDelegate:self queue:_captureVideoDispatchQueue];
+        if ([_captureSession canAddOutput:metadataOutput])
+        {
+            [_captureSession addOutput:metadataOutput];
+            [metadataOutput setMetadataObjectTypes:@[AVMetadataObjectTypeFace]];
+            NSLog(@"adding video metadata output capture");
+        }
+        else
+        {
+            NSLog(@"Couldn't add metadata output");
+        }
         
         _lastVideoDisplayTimestamp = kCMTimeInvalid;
         
