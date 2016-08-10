@@ -1450,10 +1450,9 @@ typedef void (^PBJVisionBlock)();
     if ([_currentDevice lockForConfiguration:&error]) {
     
         BOOL isExposureAtPointSupported = [_currentDevice isExposurePointOfInterestSupported];
-        if (isExposureAtPointSupported && [_currentDevice isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure]) {
-            AVCaptureExposureMode em = [_currentDevice exposureMode];
+        if (isExposureAtPointSupported && [_currentDevice isExposureModeSupported:AVCaptureExposureModeAutoExpose]) {
             [_currentDevice setExposurePointOfInterest:adjustedPoint];
-            [_currentDevice setExposureMode:em];
+            [_currentDevice setExposureMode:AVCaptureExposureModeAutoExpose];
         }
         [_currentDevice unlockForConfiguration];
         
