@@ -62,7 +62,9 @@ static CGColorSpaceRef sDeviceRgbColorSpace = NULL;
 // KVO contexts
 
 static NSString * const PBJVisionFocusObserverContext = @"PBJVisionFocusObserverContext";
+static NSString * const PBJVisionISOObserverContext = @"PBJVisionISOObserverContext";
 static NSString * const PBJVisionExposureObserverContext = @"PBJVisionExposureObserverContext";
+static NSString * const PBJVisionExposureModeObserverContext = @"PBJVisionExposureModeObserverContext";
 static NSString * const PBJVisionWhiteBalanceObserverContext = @"PBJVisionWhiteBalanceObserverContext";
 static NSString * const PBJVisionFlashModeObserverContext = @"PBJVisionFlashModeObserverContext";
 static NSString * const PBJVisionTorchModeObserverContext = @"PBJVisionTorchModeObserverContext";
@@ -546,6 +548,10 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     
     NSError *error = nil;
     if (_currentDevice && [_currentDevice lockForConfiguration:&error]) {
+        if (exposureMode == PBJExposureModeContinuousAutoExposure) {
+            CGPoint exposurePoint = CGPointMake(0.5f, 0.5f);
+            [_currentDevice setExposurePointOfInterest:exposurePoint];
+        }
         [_currentDevice setExposureMode:(AVCaptureExposureMode)exposureMode];
         [_currentDevice unlockForConfiguration];
     } else if (error) {
@@ -893,10 +899,10 @@ typedef void (^PBJVisionBlock)();
     [notificationCenter addObserver:self selector:@selector(_inputPortFormatDescriptionDidChange:) name:AVCaptureInputPortFormatDescriptionDidChangeNotification object:nil];
     
     // capture device notifications
-    [notificationCenter addObserver:self selector:@selector(_deviceSubjectAreaDidChange:) name:AVCaptureDeviceSubjectAreaDidChangeNotification object:nil];
+    //[notificationCenter addObserver:self selector:@selector(_deviceSubjectAreaDidChange:) name:AVCaptureDeviceSubjectAreaDidChangeNotification object:nil];
 
     // current device KVO notifications
-    [self addObserver:self forKeyPath:@"currentDevice.adjustingFocus" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionFocusObserverContext];
+    //[self addObserver:self forKeyPath:@"currentDevice.adjustingFocus" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionFocusObserverContext];
     [self addObserver:self forKeyPath:@"currentDevice.adjustingExposure" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionExposureObserverContext];
 //    [self addObserver:self forKeyPath:@"currentDevice.adjustingWhiteBalance" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionWhiteBalanceObserverContext];
 //    [self addObserver:self forKeyPath:@"currentDevice.flashMode" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionFlashModeObserverContext];
@@ -906,7 +912,10 @@ typedef void (^PBJVisionBlock)();
 
     // KVO is only used to monitor focus and capture events
     [_captureOutputPhoto addObserver:self forKeyPath:@"capturingStillImage" options:NSKeyValueObservingOptionNew context:(__bridge void *)(PBJVisionCaptureStillImageIsCapturingStillImageObserverContext)];
-    
+
+    [self addObserver:self forKeyPath:@"currentDevice.ISO" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionISOObserverContext];
+    [self addObserver:self forKeyPath:@"currentDevice.exposureMode" options:NSKeyValueObservingOptionNew context:(__bridge void *)PBJVisionExposureModeObserverContext];
+
     DLog(@"camera setup");
 }
 
@@ -1227,7 +1236,7 @@ typedef void (^PBJVisionBlock)();
     // ensure there is a capture device setup
     if (_currentInput) {
         AVCaptureDevice *device = [_currentInput device];
-        if (device) {
+        if (device != _currentDevice) {
             [self willChangeValueForKey:@"currentDevice"];
             _currentDevice = device;
             [self didChangeValueForKey:@"currentDevice"];
@@ -1388,24 +1397,25 @@ typedef void (^PBJVisionBlock)();
 
 - (void)_exposureChangeEnded
 {
-    BOOL isContinuousAutoExposureEnabled = [_currentDevice exposureMode] == AVCaptureExposureModeContinuousAutoExposure;
-    BOOL isExposing = [_currentDevice isAdjustingExposure];
-    BOOL isFocusSupported = [_currentDevice isFocusModeSupported:AVCaptureFocusModeContinuousAutoFocus];
+    // Why would we turn on subject change monitoring for an exposure change?
 
-    if (isContinuousAutoExposureEnabled && !isExposing && !isFocusSupported) {
-
-        NSError *error = nil;
-        if ([_currentDevice lockForConfiguration:&error]) {
-            
-            [_currentDevice setSubjectAreaChangeMonitoringEnabled:YES];
-            [_currentDevice unlockForConfiguration];
-            
-        } else if (error) {
-            DLog(@"error locking device post exposure for subject area change monitoring (%@)", error);
-        }
-
-    }
-
+//    BOOL isContinuousAutoExposureEnabled = [_currentDevice exposureMode] == AVCaptureExposureModeContinuousAutoExposure;
+//    BOOL isExposing = [_currentDevice isAdjustingExposure];
+//    BOOL isFocusSupported = [_currentDevice isFocusModeSupported:AVCaptureFocusModeContinuousAutoFocus];
+//
+//    if (isContinuousAutoExposureEnabled && !isExposing && !isFocusSupported) {
+//
+//        NSError *error = nil;
+//        if ([_currentDevice lockForConfiguration:&error]) {
+//
+//            [_currentDevice setSubjectAreaChangeMonitoringEnabled:YES];
+//            [_currentDevice unlockForConfiguration];
+//
+//        } else if (error) {
+//            DLog(@"error locking device post exposure for subject area change monitoring (%@)", error);
+//        }
+//
+//    }
     if ([_delegate respondsToSelector:@selector(visionDidChangeExposure:)])
         [_delegate visionDidChangeExposure:self];
     //    DLog(@"exposure change ended");
@@ -2277,7 +2287,7 @@ typedef void (^PBJVisionBlock)();
         // ensure there is a capture device setup
         if (_currentInput) {
             AVCaptureDevice *device = [_currentInput device];
-            if (device) {
+            if (device != _currentDevice) {
                 [self willChangeValueForKey:@"currentDevice"];
                 _currentDevice = device;
                 [self didChangeValueForKey:@"currentDevice"];
@@ -2385,7 +2395,10 @@ typedef void (^PBJVisionBlock)();
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context
 {
-    if ( context == (__bridge void *)PBJVisionFocusObserverContext ) {
+    if ( context == (__bridge void *)PBJVisionISOObserverContext ) {
+        //NSLog(@"New ISO=%@", [change objectForKey:NSKeyValueChangeNewKey]);
+    }
+    else if ( context == (__bridge void *)PBJVisionFocusObserverContext ) {
     
         BOOL isFocusing = [[change objectForKey:NSKeyValueChangeNewKey] boolValue];
         if (isFocusing) {
@@ -2404,6 +2417,11 @@ typedef void (^PBJVisionBlock)();
             [self _exposureChangeEnded];
         }
         
+    }
+    else if ( context == (__bridge void *)PBJVisionExposureModeObserverContext ) {
+        // make sure PBJ and Apple camera don't fall out of sync
+        _exposureMode = (PBJExposureMode) [[change objectForKey:NSKeyValueChangeNewKey] unsignedIntegerValue];
+
     }
     else if ( context == (__bridge void *)PBJVisionWhiteBalanceObserverContext ) {
         

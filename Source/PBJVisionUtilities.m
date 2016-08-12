@@ -32,7 +32,7 @@
 {
     CGPoint pointOfInterest = CGPointMake(.5f, .5f);
     CGSize frameSize = frame.size;
-    
+
     switch ([[PBJVision sharedInstance] cameraOrientation]) {
         case PBJCameraOrientationPortrait:
             break;
@@ -48,9 +48,10 @@
             frameSize = CGSizeMake(frameSize.height, frameSize.width);
             break;
     }
-    
-// TODO: add check for AVCaptureConnection videoMirrored
-//        viewCoordinates.x = frameSize.width - viewCoordinates.x;
+
+    if ([PBJVision sharedInstance].mirroringMode == PBJMirroringOn) {
+        viewCoordinates.x = frameSize.width - viewCoordinates.x;
+    }
     
     AVCaptureVideoPreviewLayer *previewLayer = [[PBJVision sharedInstance] previewLayer];
     
