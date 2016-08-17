@@ -1451,6 +1451,14 @@ typedef void (^PBJVisionBlock)();
     }
 }
 
+
+- (void)resetExposurePointOfInterest
+{
+    // there are cases where the camera resets the ISO, but we are stuck in
+    // a locked mode with a POI.  We need to force a reevaluation in these cases
+    [self exposeAtAdjustedPointOfInterest:_currentDevice.exposurePointOfInterest];
+}
+
 - (void)exposeAtAdjustedPointOfInterest:(CGPoint)adjustedPoint
 {
     NSError *error = nil;
