@@ -241,6 +241,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 
 @property (nonatomic, readonly) NSMutableArray *luminanceValues;
 
+@property (nonatomic, readonly) Float64 averageISO;
+
 - (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp;
 - (void)setAudioStopTimestamp:(CMTime)audioStopTimestamp;
 

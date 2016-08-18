@@ -187,7 +187,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     NSMutableArray *_luminanceValues;
     CMTime _lightDetectionPeriod;
     CMTime _lastLightDetectTimestamp;
-    
+
+    Float64 _totalISO;
+
     // flags
     
     struct {
@@ -646,6 +648,11 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     return NO;
 }
 
+
+- (Float64)averageISO
+{
+    return _totalISO / _recordedFrameCount;
+}
 
 - (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp
 {
@@ -2648,6 +2655,7 @@ typedef void (^PBJVisionBlock)();
     // need to prep the writer
     if (!_flags.videoWritten) {
         _recordedFrameCount = 0;
+        _totalISO = 0;
         if(![_mediaWriter startWritingAtTime:time]) {
             [self _executeBlockOnMainQueue:^{
                 if ([_delegate respondsToSelector:@selector(visionCaptureDidFail:)]) {
@@ -2677,6 +2685,8 @@ typedef void (^PBJVisionBlock)();
     [_mediaWriter writeSampleBuffer:nil ofType:AVMediaTypeVideo withPixelBuffer:renderedOutputPixelBuffer atTimestamp:time withDuration:duration];
     _flags.videoWritten = YES;
     _recordedFrameCount++;
+    _totalISO += _currentDevice.ISO;
+
     CVPixelBufferRelease(renderedOutputPixelBuffer);
     //DLog(@"wrote buffer at %lld %d", _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);
 }
