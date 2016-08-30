@@ -933,7 +933,7 @@ typedef void (^PBJVisionBlock)();
         return;
     
     // current device KVO notifications
-    [self removeObserver:self forKeyPath:@"currentDevice.adjustingFocus"];
+//    [self removeObserver:self forKeyPath:@"currentDevice.adjustingFocus"];
     [self removeObserver:self forKeyPath:@"currentDevice.adjustingExposure"];
 //    [self removeObserver:self forKeyPath:@"currentDevice.adjustingWhiteBalance"];
 //    [self removeObserver:self forKeyPath:@"currentDevice.flashMode"];
