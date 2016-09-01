@@ -830,9 +830,12 @@ typedef void (^PBJVisionBlock)();
 
     // create session
     _captureSession = [[AVCaptureSession alloc] init];
-
+    
     _captureSession.usesApplicationAudioSession = YES;
-    _captureSession.automaticallyConfiguresApplicationAudioSession = NO;
+    
+    if (!TARGET_IPHONE_SIMULATOR) {
+        _captureSession.automaticallyConfiguresApplicationAudioSession = NO;
+    }
 
     // capture devices
     _captureDeviceFront = [PBJVisionUtilities captureDeviceForPosition:AVCaptureDevicePositionFront];
@@ -1249,8 +1252,10 @@ typedef void (^PBJVisionBlock)();
             [self didChangeValueForKey:@"currentDevice"];
         }
     }
-
-    [_captureSession commitConfiguration];
+    
+    if (!TARGET_IPHONE_SIMULATOR) {
+        [_captureSession commitConfiguration];
+    }
 
    CMFormatDescriptionRef formatRef =  _currentDevice.activeFormat.formatDescription;
     _videoDimensions = CMVideoFormatDescriptionGetDimensions(formatRef);
@@ -1304,7 +1309,9 @@ typedef void (^PBJVisionBlock)();
         }];
         
         if (![_captureSession isRunning]) {
-            [_captureSession startRunning];
+            if (!TARGET_IPHONE_SIMULATOR) {
+                [_captureSession startRunning];
+            }
             
             [self _enqueueBlockOnMainQueue:^{
                 if ([_delegate respondsToSelector:@selector(visionSessionDidStartPreview:)]) {
