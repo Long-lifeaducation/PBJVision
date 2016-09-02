@@ -199,6 +199,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 
 @property (nonatomic) PBJExposureMode exposureMode;
 @property (nonatomic, readonly, getter=isExposureLockSupported) BOOL exposureLockSupported;
+
+- (void)resetExposurePointOfInterest;
 - (void)exposeAtAdjustedPointOfInterest:(CGPoint)adjustedPoint;
 
 // photo
@@ -238,6 +240,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 @property (nonatomic, readonly) Float64 capturedVideoSeconds;
 
 @property (nonatomic, readonly) NSMutableArray *luminanceValues;
+
+@property (nonatomic, readonly) Float64 averageISO;
 
 - (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp;
 - (void)setAudioStopTimestamp:(CMTime)audioStopTimestamp;
