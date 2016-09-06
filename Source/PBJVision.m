@@ -654,6 +654,21 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     return _totalISO / _recordedFrameCount;
 }
 
+
+- (AVCaptureDeviceFormat *)formatForDevice:(AVCaptureDevice*)device withDim:(NSInteger)dim mediaSubType:(FourCharCode)subtype
+{
+    NSArray *formats = [device formats];
+    for (AVCaptureDeviceFormat *format in formats) {
+        if (dim == CMVideoFormatDescriptionGetDimensions(format.formatDescription).height
+            && CMFormatDescriptionGetMediaSubType(format.formatDescription) == subtype) {
+            DLog(@"Found format: %@", format);
+            return format;
+        }
+    }
+
+    return nil;
+}
+
 - (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp
 {
     [self _enqueueBlockOnCaptureVideoQueue:^{
@@ -984,6 +999,30 @@ typedef void (^PBJVisionBlock)();
 
 #pragma mark - AVCaptureSession
 
+// find more elegant way
+- (NSInteger)dimensionForOuptutFormat:(PBJOutputFormat)outputFormat
+{
+    NSInteger resolution = 360; // default
+
+    switch (outputFormat)
+    {
+        case PBJOutputFormat360x360:
+            resolution = 360;
+            break;
+        case PBJOutputFormat480x480:
+            resolution = 480;
+            break;
+        case PBJOutputFormat720x720:
+            resolution = 720;
+            break;
+        default:
+            resolution = 360;
+            break;
+    }
+
+    return resolution;
+}
+
 - (BOOL)_canSessionCaptureWithOutput:(AVCaptureOutput *)captureOutput
 {
     BOOL sessionContainsOutput = [[_captureSession outputs] containsObject:captureOutput];
@@ -1211,15 +1250,20 @@ typedef void (^PBJVisionBlock)();
             
     }
 
-    // apply presets
-    if ([_captureSession canSetSessionPreset:sessionPreset])
+    NSInteger dimension = [self dimensionForOuptutFormat:_outputFormat];
+    AVCaptureDeviceFormat *format = nil;
+
+    format = [self formatForDevice:newCaptureDevice withDim:dimension mediaSubType:kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange];
+
+    // apply presets if we can't find format
+    if (!format && [_captureSession canSetSessionPreset:sessionPreset])
         [_captureSession setSessionPreset:sessionPreset];
 
     // framerate needs to be set after preset, otherwise preset overrides fps
     // if device doesn't support framerate (which would be very odd since we're not targeting super high or low fps)
     // use default.
-    if (newCaptureOutput && (newCaptureOutput == _captureOutputVideo)
-        && [self formatSupports:newCaptureDevice.activeFormat minFramerate:_minimumVideoFrameRate maxFramerate:_videoFrameRate])
+    if (newCaptureOutput && (newCaptureOutput == _captureOutputVideo))
+        //&& [self formatSupports:newCaptureDevice.activeFormat minFramerate:_minimumVideoFrameRate maxFramerate:_videoFrameRate])
     {
         // duration is 1/framerate
         CMTime minFrameDuration = CMTimeMake(1, (int32_t)_videoFrameRate);
@@ -1227,8 +1271,14 @@ typedef void (^PBJVisionBlock)();
         NSError *error = nil;
         if ([newCaptureDevice lockForConfiguration:&error]) {
 
-            newCaptureDevice.activeVideoMinFrameDuration = minFrameDuration;
-            newCaptureDevice.activeVideoMaxFrameDuration = maxFrameDuration;
+            if (format) {
+                [newCaptureDevice setActiveFormat:format];
+            }
+
+            if ([self formatSupports:format minFramerate:_minimumVideoFrameRate maxFramerate:_videoFrameRate]) {
+                newCaptureDevice.activeVideoMinFrameDuration = minFrameDuration;
+                newCaptureDevice.activeVideoMaxFrameDuration = maxFrameDuration;
+            }
 
             [newCaptureDevice unlockForConfiguration];
 
