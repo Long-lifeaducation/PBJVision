@@ -2777,7 +2777,7 @@ typedef void (^PBJVisionBlock)();
         if(_isFilterEnabled)
         {
             // Get filter based on scrollview offset
-            GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupAtIndex:self.filterOffset];
+            GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupAtIndex:self.filterOffset includeAirbrush:self.includeAirbrush];
 
             // Check if the filter needs to be changed
             if (![[_movieDataInput targets] containsObject:newFilterGroup])

@@ -228,6 +228,9 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 // this determines whether we display video with PBJ or GPUImage
 @property (nonatomic) BOOL isFilterEnabled;
 
+// this determines whether we should include airbrush in the video effects chain
+@property (nonatomic) BOOL includeAirbrush;
+
 // this determines whether or not we do low light detection for video
 @property (nonatomic, getter=isDetectingLowLight) BOOL detectLowLight;
 
