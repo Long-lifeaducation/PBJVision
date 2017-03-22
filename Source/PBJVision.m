@@ -27,7 +27,6 @@
 #import "PBJVisionUtilities.h"
 #import "PBJMediaWriter.h"
 #import "PBJGLProgram.h"
-#import "VideoFilterManager.h"
 #import "GPUImageSplitFilter.h"
 #include "BufferCopy.h"
 
@@ -725,6 +724,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         
         _centerPercentage = 0.5f;
         
+        _airbrushFilterType = AirbrushFilterTypeNone;
+        
         // set default capture preset
         _captureSessionPreset = AVCaptureSessionPresetMedium;
 
@@ -798,6 +799,15 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     DLog(@"resetting preview views...");
 
     _filteredPreviewView = [[GPUImageView alloc] initWithFrame:CGRectMake(0, 0, 640, 640)];
+    
+    NSInteger outputSize = [self dimensionForOuptutFormat:_outputFormat];
+    if ([UIScreen mainScreen].nativeBounds.size.width / [UIScreen mainScreen].nativeScale >= outputSize)
+    {
+        // No need to use retina in this view. The video will be low-res enough that
+        // a preview view with scale factor 1 is sufficient.
+        _filteredPreviewView.contentScaleFactor = 1;
+        _filteredPreviewView.layer.contentsScale = 1;
+    }
     [_filteredPreviewView setFillMode:kGPUImageFillModePreserveAspectRatio];
 
     DLog(@"reset preview views!");
@@ -2777,7 +2787,7 @@ typedef void (^PBJVisionBlock)();
         if(_isFilterEnabled)
         {
             // Get filter based on scrollview offset
-            GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupAtIndex:self.filterOffset includeAirbrush:self.includeAirbrush];
+            GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupAtIndex:self.filterOffset airbrushFilterType:self.airbrushFilterType];
 
             // Check if the filter needs to be changed
             if (![[_movieDataInput targets] containsObject:newFilterGroup])

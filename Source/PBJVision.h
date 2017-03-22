@@ -25,6 +25,7 @@
 
 #import <Foundation/Foundation.h>
 #import <AVFoundation/AVFoundation.h>
+#import "VideoFilterManager.h"
 
 // vision types
 
@@ -229,7 +230,7 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 @property (nonatomic) BOOL isFilterEnabled;
 
 // this determines whether we should include airbrush in the video effects chain
-@property (nonatomic) BOOL includeAirbrush;
+@property (nonatomic) AirbrushFilterType airbrushFilterType;
 
 // this determines whether or not we do low light detection for video
 @property (nonatomic, getter=isDetectingLowLight) BOOL detectLowLight;
