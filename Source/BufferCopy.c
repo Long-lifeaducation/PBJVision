@@ -135,7 +135,7 @@ uint32_t Luminance(uint8_t *Y, size_t YRowBytes, size_t width, size_t height)
 #pragma clang loop vectorize(enable) interleave(enable)
         for (j = 0; j < width; j++)
         {
-            luminance += y++;
+            luminance += *y++;
         }
         Y += YRowBytes;
     }
