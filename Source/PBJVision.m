@@ -225,6 +225,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @property (nonatomic, strong) GPUImageMovie *movieDataInput;
 @property (nonatomic, strong) GPUImageFilterGroup *currentFilterGroup;
 @property (nonatomic, strong) VideoFilterManager *filterManager;
+@property (nonatomic, assign) VideoFilterType currentFilterType;
 
 
 @property (nonatomic, retain) __attribute__((NSObject)) CMFormatDescriptionRef outputVideoFormatDescription;
@@ -2787,7 +2788,7 @@ typedef void (^PBJVisionBlock)();
         if(_isFilterEnabled)
         {
             // Get filter based on scrollview offset
-            GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupAtIndex:self.filterOffset airbrushFilterType:self.airbrushFilterType];
+            GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupForType:self.currentFilterType airbrushFilterType:self.airbrushFilterType];
 
             // Check if the filter needs to be changed
             if (![[_movieDataInput targets] containsObject:newFilterGroup])
@@ -2811,15 +2812,6 @@ typedef void (^PBJVisionBlock)();
                 if ( ![filter isKindOfClass:[GPUImageSplitFilter class]] ) {
                     [filter setInputRotation:rotation atIndex:0];
                 }
-            }
-
-            if (_isSwipeEnabled)
-            {
-                // Tell spilt filter what percentage should be left and right filter
-                CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
-                                     self.filterOffset - (truncf(self.filterOffset)));
-                GPUImageSplitFilter *splitFilter = (GPUImageSplitFilter*)[_currentFilterGroup filterAtIndex:_currentFilterGroup.filterCount-1];
-                [splitFilter setOffset:filterPercent];
             }
         }
         else

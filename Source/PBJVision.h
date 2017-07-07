@@ -126,8 +126,7 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 
 + (PBJVision *)sharedInstance;
 
-// Swipe offset so we can get the correct filter
-@property CGFloat filterOffset;
+- (void)setCurrentFilterType:(VideoFilterType)filterType;
 
 @property (nonatomic, weak) id<PBJVisionDelegate> delegate;
 
@@ -222,9 +221,6 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 @property (nonatomic, getter=isVideoRenderingEnabled) BOOL videoRenderingEnabled;
 @property (nonatomic, getter=isAudioCaptureEnabled) BOOL audioCaptureEnabled;
 @property (nonatomic) CGFloat screenScale;
-
-// this determines whether or not we update the offset of our split filter
-@property (nonatomic) BOOL isSwipeEnabled;
 
 // this determines whether we display video with PBJ or GPUImage
 @property (nonatomic) BOOL isFilterEnabled;
