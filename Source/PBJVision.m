@@ -226,7 +226,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @property (nonatomic, readonly) GPUImageView *filteredPreviewView;
 
 @property (nonatomic, strong) GPUImageMovie *movieDataInput;
-@property (nonatomic, strong) GPUImageFilterGroup *currentFilterGroup;
+@property (nonatomic, strong) GPUImageOutput<GPUImageInput> *currentFilterGroup;
 @property (nonatomic, strong) VideoFilterManager *filterManager;
 
 
@@ -2765,6 +2765,11 @@ typedef void (^PBJVisionBlock)();
     //DLog(@"wrote buffer at %lld %d", _mediaWriter.videoTimestamp.value, _mediaWriter.videoTimestamp.timescale);
 }
 
+- (void)setFilterOffset:(CGFloat)filterOffset
+{
+    _filterOffset = filterOffset;
+}
+
 
 // convert CoreVideo YUV pixel buffer (Y luminance and Cb Cr chroma) into RGB
 // processing is done on the GPU, operation WAY more efficient than converting on the CPU
@@ -2808,25 +2813,8 @@ typedef void (^PBJVisionBlock)();
                 _lastAirbrushFilterType = self.airbrushFilterType;
             }
 
-            // to handle mirroring with GPUImage, we just need to horizontal flip the
-            // initial filters in the chain (as long as they aren't split filters). This
-            // will flip image for left and right side of split, without flipping split direction
-            for ( int i = 0; i < _currentFilterGroup.initialFilters.count; i++ )
-            {
-                GPUImageFilter *filter = (GPUImageFilter *)_currentFilterGroup.initialFilters[i];
-                if ( ![filter isKindOfClass:[GPUImageSplitFilter class]] ) {
-                    [filter setInputRotation:rotation atIndex:0];
-                }
-            }
-
-            if (_isSwipeEnabled)
-            {
-                // Tell spilt filter what percentage should be left and right filter
-                CGFloat filterPercent = ((self.filterOffset < 1) ? self.filterOffset :
-                                     self.filterOffset - (truncf(self.filterOffset)));
-                GPUImageSplitFilter *splitFilter = (GPUImageSplitFilter*)[_currentFilterGroup filterAtIndex:_currentFilterGroup.filterCount-1];
-                [splitFilter setOffset:filterPercent];
-            }
+            // to handle mirroring with GPUImage, we just need to horizontal flip
+            [_currentFilterGroup setInputRotation:rotation atIndex:0];
         }
         else
         {
