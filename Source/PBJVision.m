@@ -226,7 +226,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @property (nonatomic, readonly) GPUImageView *filteredPreviewView;
 
 @property (nonatomic, strong) GPUImageMovie *movieDataInput;
-@property (nonatomic, strong) GPUImageFilterGroup *currentFilterGroup;
+@property (nonatomic, strong) GPUImageOutput<GPUImageInput> *currentFilterGroup;
 @property (nonatomic, strong) VideoFilterManager *filterManager;
 @property (nonatomic, assign) VideoFilterType currentFilterType;
 
@@ -2798,7 +2798,7 @@ typedef void (^PBJVisionBlock)();
                 [_movieDataInput removeTarget:_currentFilterGroup];
                 [_currentFilterGroup removeAllTargets];
                 
-                _currentFilterGroup = [_filterManager filterForType:self.currentFilterType airbrushFilterType:self.airbrushFilterType];
+                _currentFilterGroup = [_filterManager filterWithType:self.currentFilterType airbrushFilterType:self.airbrushFilterType];
                 
                 [_movieDataInput addTarget:_currentFilterGroup];
                 [_currentFilterGroup addTarget:_filteredPreviewView];
