@@ -216,6 +216,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         size_t xOffset;
         size_t yOffset;
     } _pixelBufferInfo;
+    
+    VideoFilterType _lastFilterType;
+    AirbrushFilterType _lastAirbrushFilterType;
 }
 
 @property (nonatomic) AVCaptureDevice *currentDevice;
@@ -719,7 +722,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 {
     self = [super init];
     if (self) {
-
+        
+        _lastFilterType = VideoFilterTypeUnknown;
         
         sDeviceRgbColorSpace = CGColorSpaceCreateDeviceRGB();
         
@@ -1339,6 +1343,7 @@ typedef void (^PBJVisionBlock)();
 
 - (void)startPreview
 {
+    _lastFilterType = VideoFilterTypeUnknown;
     [self _enqueueBlockOnCaptureVideoQueue:^{
 
         _lastLightDetectTimestamp = kCMTimeInvalid;
@@ -2787,32 +2792,25 @@ typedef void (^PBJVisionBlock)();
 
         if(_isFilterEnabled)
         {
-            // Get filter based on scrollview offset
-            GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupForType:self.currentFilterType airbrushFilterType:self.airbrushFilterType];
-
-            // Check if the filter needs to be changed
-            if (![[_movieDataInput targets] containsObject:newFilterGroup])
+            // Update current filter group if needed
+            if ((int)self.currentFilterType != _lastFilterType || self.airbrushFilterType != _lastAirbrushFilterType)
             {
                 [_movieDataInput removeTarget:_currentFilterGroup];
                 [_currentFilterGroup removeAllTargets];
-
-                _currentFilterGroup = newFilterGroup;
+                
+                _currentFilterGroup = [_filterManager filterForType:self.currentFilterType airbrushFilterType:self.airbrushFilterType];
+                
                 [_movieDataInput addTarget:_currentFilterGroup];
                 [_currentFilterGroup addTarget:_filteredPreviewView];
+                
+                _lastFilterType = self.currentFilterType;
+                _lastAirbrushFilterType = self.airbrushFilterType;
+
 
             }
 
-
-            // to handle mirroring with GPUImage, we just need to horizontal flip the
-            // initial filters in the chain (as long as they aren't split filters). This
-            // will flip image for left and right side of split, without flipping split direction
-            for ( int i = 0; i < _currentFilterGroup.initialFilters.count; i++ )
-            {
-                GPUImageFilter *filter = (GPUImageFilter *)_currentFilterGroup.initialFilters[i];
-                if ( ![filter isKindOfClass:[GPUImageSplitFilter class]] ) {
-                    [filter setInputRotation:rotation atIndex:0];
-                }
-            }
+            
+            [_currentFilterGroup setInputRotation:rotation atIndex:0];
         }
         else
         {
