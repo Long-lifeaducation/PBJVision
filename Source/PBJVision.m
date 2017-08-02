@@ -2795,21 +2795,24 @@ typedef void (^PBJVisionBlock)();
             // Update current filter group if needed
             if ((int)self.currentFilterType != _lastFilterType || self.airbrushFilterType != _lastAirbrushFilterType)
             {
-                [_movieDataInput removeTarget:_currentFilterGroup];
-                [_currentFilterGroup removeAllTargets];
+                GPUImageOutput<GPUImageInput> *newFilterGroup = [_filterManager filterWithType:self.currentFilterType airbrushFilterType:self.airbrushFilterType];
                 
-                _currentFilterGroup = [_filterManager filterWithType:self.currentFilterType airbrushFilterType:self.airbrushFilterType];
-                
-                [_movieDataInput addTarget:_currentFilterGroup];
-                [_currentFilterGroup addTarget:_filteredPreviewView];
+                // Check if the filter needs to be changed
+                if (![[_movieDataInput targets] containsObject:newFilterGroup])
+                {
+                    [_movieDataInput removeTarget:_currentFilterGroup];
+                    [_currentFilterGroup removeAllTargets];
+                    
+                    _currentFilterGroup = newFilterGroup;
+                    
+                    [_movieDataInput addTarget:_currentFilterGroup];
+                    [_currentFilterGroup addTarget:_filteredPreviewView];
+                }
                 
                 _lastFilterType = self.currentFilterType;
                 _lastAirbrushFilterType = self.airbrushFilterType;
-
-
+                
             }
-
-            
             [_currentFilterGroup setInputRotation:rotation atIndex:0];
         }
         else
