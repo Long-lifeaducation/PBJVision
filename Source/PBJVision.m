@@ -217,7 +217,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         size_t yOffset;
     } _pixelBufferInfo;
     
-    VideoFilterType _lastFilterType;
+    ALYCEVideoStyle _lastFilterStyle;
+    ALYCEColorFilter _lastFilterColor;
     AirbrushFilterType _lastAirbrushFilterType;
 }
 
@@ -228,7 +229,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @property (nonatomic, strong) GPUImageMovie *movieDataInput;
 @property (nonatomic, strong) GPUImageOutput<GPUImageInput> *currentFilterGroup;
 @property (nonatomic, strong) VideoFilterManager *filterManager;
-@property (nonatomic, assign) VideoFilterType currentFilterType;
+
+@property (nonatomic, assign) ALYCEVideoStyle currentFilterStyle;
+@property (nonatomic, assign) ALYCEColorFilter currentFilterColor;
 
 
 @property (nonatomic, retain) __attribute__((NSObject)) CMFormatDescriptionRef outputVideoFormatDescription;
@@ -722,9 +725,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 {
     self = [super init];
     if (self) {
-        
-        _lastFilterType = VideoFilterTypeUnknown;
-        
+
+        [self resetFilters];
+
         sDeviceRgbColorSpace = CGColorSpaceCreateDeviceRGB();
         
         _centerPercentage = 0.5f;
@@ -797,6 +800,12 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     
 
     [self _destroyCamera];
+}
+
+- (void)resetFilters
+{
+    _currentFilterStyle = _lastFilterStyle = ALYCEVideoStyleClassic;
+    _currentFilterColor = _lastFilterColor = ALYCEColorFilterNone;
 }
 
 - (void)setupPreviewViews
@@ -1343,7 +1352,8 @@ typedef void (^PBJVisionBlock)();
 
 - (void)startPreview
 {
-    _lastFilterType = VideoFilterTypeUnknown;
+    [self resetFilters];
+
     [self _enqueueBlockOnCaptureVideoQueue:^{
 
         _lastLightDetectTimestamp = kCMTimeInvalid;
@@ -2793,10 +2803,14 @@ typedef void (^PBJVisionBlock)();
         if(_isFilterEnabled)
         {
             // Update current filter group if needed
-            if ((int)self.currentFilterType != _lastFilterType || self.airbrushFilterType != _lastAirbrushFilterType)
+            if (_currentFilterStyle != _lastFilterStyle ||
+                _currentFilterColor != _lastFilterColor ||
+                _airbrushFilterType != _lastAirbrushFilterType)
             {
-                GPUImageOutput<GPUImageInput> *newFilterGroup = [_filterManager filterWithType:self.currentFilterType airbrushFilterType:self.airbrushFilterType];
-                
+                GPUImageOutput<GPUImageInput> *newFilterGroup = [_filterManager filterWithVideoStyle:_currentFilterStyle
+                                                                                         colorFilter:_currentFilterColor
+                                                                                  airbrushFilterType:_airbrushFilterType];
+
                 // Check if the filter needs to be changed
                 if (![[_movieDataInput targets] containsObject:newFilterGroup])
                 {
@@ -2808,9 +2822,10 @@ typedef void (^PBJVisionBlock)();
                     [_movieDataInput addTarget:_currentFilterGroup];
                     [_currentFilterGroup addTarget:_filteredPreviewView];
                 }
-                
-                _lastFilterType = self.currentFilterType;
-                _lastAirbrushFilterType = self.airbrushFilterType;
+
+                _lastFilterStyle = _currentFilterStyle;
+                _lastFilterColor = _currentFilterColor;
+                _lastAirbrushFilterType = _airbrushFilterType;
                 
             }
             [_currentFilterGroup setInputRotation:rotation atIndex:0];

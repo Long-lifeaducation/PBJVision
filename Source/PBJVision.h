@@ -126,7 +126,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 
 + (PBJVision *)sharedInstance;
 
-- (void)setCurrentFilterType:(VideoFilterType)filterType;
+- (void)setCurrentFilterStyle:(ALYCEVideoStyle)filterStyle;
+- (void)setCurrentFilterColor:(ALYCEColorFilter)filterColor;
 
 @property (nonatomic, weak) id<PBJVisionDelegate> delegate;
 
