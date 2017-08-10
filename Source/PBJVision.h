@@ -25,7 +25,7 @@
 
 #import <Foundation/Foundation.h>
 #import <AVFoundation/AVFoundation.h>
-#import "VideoFilterManager.h"
+#import "GPUImageFilterGallery.h"
 
 // vision types
 

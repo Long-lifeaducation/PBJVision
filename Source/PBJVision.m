@@ -228,7 +228,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 @property (nonatomic, strong) GPUImageMovie *movieDataInput;
 @property (nonatomic, strong) GPUImageOutput<GPUImageInput> *currentFilterGroup;
-@property (nonatomic, strong) VideoFilterManager *filterManager;
 
 @property (nonatomic, assign) ALYCEVideoStyle currentFilterStyle;
 @property (nonatomic, assign) ALYCEColorFilter currentFilterColor;
@@ -775,8 +774,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationWillEnterForeground:) name:@"UIApplicationWillEnterForegroundNotification" object:[UIApplication sharedApplication]];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidEnterBackground:) name:@"UIApplicationWillResignActiveNotification" object:[UIApplication sharedApplication]];
         
-        _filterManager = [VideoFilterManager sharedInstance];
-
         _detectLowLight = NO;
         _lastLightDetectTimestamp = kCMTimeInvalid;
 
@@ -1413,6 +1410,8 @@ typedef void (^PBJVisionBlock)();
     {
         [_movieDataInput removeTarget:_currentFilterGroup];
         [_currentFilterGroup removeAllTargets];
+        [_currentFilterGroup setInputRotation:kGPUImageNoRotation atIndex:0];
+        _currentFilterGroup = nil;
     }
 
     if (mirrorFilter)
@@ -2805,11 +2804,16 @@ typedef void (^PBJVisionBlock)();
             // Update current filter group if needed
             if (_currentFilterStyle != _lastFilterStyle ||
                 _currentFilterColor != _lastFilterColor ||
-                _airbrushFilterType != _lastAirbrushFilterType)
+                _airbrushFilterType != _lastAirbrushFilterType ||
+                !_currentFilterGroup)
             {
-                GPUImageOutput<GPUImageInput> *newFilterGroup = [_filterManager filterWithVideoStyle:_currentFilterStyle
-                                                                                         colorFilter:_currentFilterColor
-                                                                                  airbrushFilterType:_airbrushFilterType];
+                runSynchronouslyOnVideoProcessingQueue(^{
+                    [[GPUImageFilterGallery sharedInstance] setInputRotation:kGPUImageNoRotation atIndex:0];
+                    [GPUImageFilterGallery sharedInstance].videoStyle = _currentFilterStyle;
+                    [GPUImageFilterGallery sharedInstance].colorFilter = _currentFilterColor;
+                    [GPUImageFilterGallery sharedInstance].airbrushFilterType = _airbrushFilterType;
+                });
+                GPUImageOutput<GPUImageInput> *newFilterGroup = [GPUImageFilterGallery sharedInstance];
 
                 // Check if the filter needs to be changed
                 if (![[_movieDataInput targets] containsObject:newFilterGroup])
