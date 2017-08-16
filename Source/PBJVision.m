@@ -402,7 +402,9 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
             break;
     }
 
-    [connection setVideoOrientation:orientation];
+    if(orientation != connection.videoOrientation) {
+        [connection setVideoOrientation:orientation];
+    }
 }
 
 - (void)_setCameraMode:(PBJCameraMode)cameraMode cameraDevice:(PBJCameraDevice)cameraDevice outputFormat:(PBJOutputFormat)outputFormat
