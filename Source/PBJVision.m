@@ -216,6 +216,10 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         size_t xOffset;
         size_t yOffset;
     } _pixelBufferInfo;
+    
+    ALYCEVideoStyle _lastFilterStyle;
+    ALYCEColorFilter _lastFilterColor;
+    AirbrushFilterType _lastAirbrushFilterType;
 }
 
 @property (nonatomic) AVCaptureDevice *currentDevice;
@@ -223,9 +227,10 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @property (nonatomic, readonly) GPUImageView *filteredPreviewView;
 
 @property (nonatomic, strong) GPUImageMovie *movieDataInput;
-@property (nonatomic, strong) GPUImageFilterGroup *currentFilterGroup;
-@property (nonatomic, strong) VideoFilterManager *filterManager;
-@property (nonatomic, assign) VideoFilterType currentFilterType;
+@property (nonatomic, strong) GPUImageOutput<GPUImageInput> *currentFilterGroup;
+
+@property (nonatomic, assign) ALYCEVideoStyle currentFilterStyle;
+@property (nonatomic, assign) ALYCEColorFilter currentFilterColor;
 
 
 @property (nonatomic, retain) __attribute__((NSObject)) CMFormatDescriptionRef outputVideoFormatDescription;
@@ -722,7 +727,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     self = [super init];
     if (self) {
 
-        
+        [self resetFilters];
+
         sDeviceRgbColorSpace = CGColorSpaceCreateDeviceRGB();
         
         _centerPercentage = 0.5f;
@@ -770,8 +776,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationWillEnterForeground:) name:@"UIApplicationWillEnterForegroundNotification" object:[UIApplication sharedApplication]];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_applicationDidEnterBackground:) name:@"UIApplicationWillResignActiveNotification" object:[UIApplication sharedApplication]];
         
-        _filterManager = [VideoFilterManager sharedInstance];
-
         _detectLowLight = NO;
         _lastLightDetectTimestamp = kCMTimeInvalid;
 
@@ -795,6 +799,12 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     
 
     [self _destroyCamera];
+}
+
+- (void)resetFilters
+{
+    _currentFilterStyle = _lastFilterStyle = ALYCEVideoStyleClassic;
+    _currentFilterColor = _lastFilterColor = ALYCEColorFilterNone;
 }
 
 - (void)setupPreviewViews
@@ -1341,6 +1351,8 @@ typedef void (^PBJVisionBlock)();
 
 - (void)startPreview
 {
+    [self resetFilters];
+
     [self _enqueueBlockOnCaptureVideoQueue:^{
 
         _lastLightDetectTimestamp = kCMTimeInvalid;
@@ -1400,6 +1412,8 @@ typedef void (^PBJVisionBlock)();
     {
         [_movieDataInput removeTarget:_currentFilterGroup];
         [_currentFilterGroup removeAllTargets];
+        [_currentFilterGroup setInputRotation:kGPUImageNoRotation atIndex:0];
+        _currentFilterGroup = nil;
     }
 
     if (mirrorFilter)
@@ -2789,32 +2803,38 @@ typedef void (^PBJVisionBlock)();
 
         if(_isFilterEnabled)
         {
-            // Get filter based on scrollview offset
-            GPUImageFilterGroup *newFilterGroup = [_filterManager splitFilterGroupForType:self.currentFilterType airbrushFilterType:self.airbrushFilterType];
-
-            // Check if the filter needs to be changed
-            if (![[_movieDataInput targets] containsObject:newFilterGroup])
+            // Update current filter group if needed
+            if (_currentFilterStyle != _lastFilterStyle ||
+                _currentFilterColor != _lastFilterColor ||
+                _airbrushFilterType != _lastAirbrushFilterType ||
+                !_currentFilterGroup)
             {
-                [_movieDataInput removeTarget:_currentFilterGroup];
-                [_currentFilterGroup removeAllTargets];
+                runSynchronouslyOnVideoProcessingQueue(^{
+                    [[GPUImageFilterGallery sharedInstance] setInputRotation:kGPUImageNoRotation atIndex:0];
+                    [GPUImageFilterGallery sharedInstance].videoStyle = _currentFilterStyle;
+                    [GPUImageFilterGallery sharedInstance].colorFilter = _currentFilterColor;
+                    [GPUImageFilterGallery sharedInstance].airbrushFilterType = _airbrushFilterType;
+                });
+                GPUImageOutput<GPUImageInput> *newFilterGroup = [GPUImageFilterGallery sharedInstance];
 
-                _currentFilterGroup = newFilterGroup;
-                [_movieDataInput addTarget:_currentFilterGroup];
-                [_currentFilterGroup addTarget:_filteredPreviewView];
-
-            }
-
-
-            // to handle mirroring with GPUImage, we just need to horizontal flip the
-            // initial filters in the chain (as long as they aren't split filters). This
-            // will flip image for left and right side of split, without flipping split direction
-            for ( int i = 0; i < _currentFilterGroup.initialFilters.count; i++ )
-            {
-                GPUImageFilter *filter = (GPUImageFilter *)_currentFilterGroup.initialFilters[i];
-                if ( ![filter isKindOfClass:[GPUImageSplitFilter class]] ) {
-                    [filter setInputRotation:rotation atIndex:0];
+                // Check if the filter needs to be changed
+                if (![[_movieDataInput targets] containsObject:newFilterGroup])
+                {
+                    [_movieDataInput removeTarget:_currentFilterGroup];
+                    [_currentFilterGroup removeAllTargets];
+                    
+                    _currentFilterGroup = newFilterGroup;
+                    
+                    [_movieDataInput addTarget:_currentFilterGroup];
+                    [_currentFilterGroup addTarget:_filteredPreviewView];
                 }
+
+                _lastFilterStyle = _currentFilterStyle;
+                _lastFilterColor = _currentFilterColor;
+                _lastAirbrushFilterType = _airbrushFilterType;
+                
             }
+            [_currentFilterGroup setInputRotation:rotation atIndex:0];
         }
         else
         {
