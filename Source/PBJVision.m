@@ -30,6 +30,8 @@
 #import "GPUImageSplitFilter.h"
 #include "BufferCopy.h"
 
+#include "GPUImageALYCEFilter.h"
+
 #import <ImageIO/ImageIO.h>
 #import <OpenGLES/EAGL.h>
 
@@ -216,10 +218,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         size_t xOffset;
         size_t yOffset;
     } _pixelBufferInfo;
-    
-    ALYCEVideoStyle _lastFilterStyle;
-    ALYCEColorFilter _lastFilterColor;
-    AirbrushFilterType _lastAirbrushFilterType;
 }
 
 @property (nonatomic) AVCaptureDevice *currentDevice;
@@ -227,7 +225,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @property (nonatomic, readonly) GPUImageView *filteredPreviewView;
 
 @property (nonatomic, strong) GPUImageMovie *movieDataInput;
-@property (nonatomic, strong) GPUImageOutput<GPUImageInput> *currentFilterGroup;
 
 @property (nonatomic, assign) ALYCEVideoStyle currentFilterStyle;
 @property (nonatomic, assign) ALYCEColorFilter currentFilterColor;
@@ -733,7 +730,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         
         _centerPercentage = 0.5f;
         
-        _airbrushFilterType = AirbrushFilterTypeNone;
+        _alyceFilter = [[GPUImageALYCEFilter alloc] init];
         
         // set default capture preset
         _captureSessionPreset = AVCaptureSessionPresetMedium;
@@ -803,8 +800,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 - (void)resetFilters
 {
-    _currentFilterStyle = _lastFilterStyle = ALYCEVideoStyleClassic;
-    _currentFilterColor = _lastFilterColor = ALYCEColorFilterNone;
+    self.alyceFilter.colorFilter = ALYCEColorFilterNone;
+    self.alyceFilter.videoStyle = ALYCEVideoStyleClassic;
 }
 
 - (void)setupPreviewViews
@@ -1408,12 +1405,10 @@ typedef void (^PBJVisionBlock)();
     
     DLog(@"Stop Preview");
 
-    if (_currentFilterGroup)
+    if (_alyceFilter)
     {
-        [_movieDataInput removeTarget:_currentFilterGroup];
-        [_currentFilterGroup removeAllTargets];
-        [_currentFilterGroup setInputRotation:kGPUImageNoRotation atIndex:0];
-        _currentFilterGroup = nil;
+        [_movieDataInput removeTarget:_alyceFilter];
+        [_alyceFilter removeAllTargets];
     }
 
     if (mirrorFilter)
@@ -2686,10 +2681,10 @@ typedef void (^PBJVisionBlock)();
 - (void)clearPreviewView
 {
 
-    if (self.currentFilterGroup)
+    if (self.alyceFilter)
     {
-        [self.currentFilterGroup removeAllTargets];
-        [self.currentFilterGroup addTarget:_filteredPreviewView];
+        [self.alyceFilter removeAllTargets];
+        [self.alyceFilter addTarget:_filteredPreviewView];
     }
 }
 
@@ -2803,38 +2798,16 @@ typedef void (^PBJVisionBlock)();
 
         if(_isFilterEnabled)
         {
-            // Update current filter group if needed
-            if (_currentFilterStyle != _lastFilterStyle ||
-                _currentFilterColor != _lastFilterColor ||
-                _airbrushFilterType != _lastAirbrushFilterType ||
-                !_currentFilterGroup)
+            [self.alyceFilter setInputRotation:rotation atIndex:0];
+            
+            // Check if the filter needs to be changed
+            if (![[_movieDataInput targets] containsObject:self.alyceFilter])
             {
-                runSynchronouslyOnVideoProcessingQueue(^{
-                    [[GPUImageFilterGallery sharedInstance] setInputRotation:kGPUImageNoRotation atIndex:0];
-                    [GPUImageFilterGallery sharedInstance].videoStyle = _currentFilterStyle;
-                    [GPUImageFilterGallery sharedInstance].colorFilter = _currentFilterColor;
-                    [GPUImageFilterGallery sharedInstance].airbrushFilterType = _airbrushFilterType;
-                });
-                GPUImageOutput<GPUImageInput> *newFilterGroup = [GPUImageFilterGallery sharedInstance];
-
-                // Check if the filter needs to be changed
-                if (![[_movieDataInput targets] containsObject:newFilterGroup])
-                {
-                    [_movieDataInput removeTarget:_currentFilterGroup];
-                    [_currentFilterGroup removeAllTargets];
-                    
-                    _currentFilterGroup = newFilterGroup;
-                    
-                    [_movieDataInput addTarget:_currentFilterGroup];
-                    [_currentFilterGroup addTarget:_filteredPreviewView];
-                }
-
-                _lastFilterStyle = _currentFilterStyle;
-                _lastFilterColor = _currentFilterColor;
-                _lastAirbrushFilterType = _airbrushFilterType;
+                [_movieDataInput removeAllTargets];
                 
+                [_movieDataInput addTarget:self.alyceFilter];
+                [self.alyceFilter addTarget:_filteredPreviewView];
             }
-            [_currentFilterGroup setInputRotation:rotation atIndex:0];
         }
         else
         {

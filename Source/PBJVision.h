@@ -25,7 +25,7 @@
 
 #import <Foundation/Foundation.h>
 #import <AVFoundation/AVFoundation.h>
-#import "GPUImageFilterGallery.h"
+#import "GPUImageALYCEFilter.h"
 
 // vision types
 
@@ -126,9 +126,7 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 
 + (PBJVision *)sharedInstance;
 
-- (void)setCurrentFilterStyle:(ALYCEVideoStyle)filterStyle;
-- (void)setCurrentFilterColor:(ALYCEColorFilter)filterColor;
-
+@property (nonatomic, strong) GPUImageALYCEFilter *alyceFilter;
 @property (nonatomic, weak) id<PBJVisionDelegate> delegate;
 
 // session
@@ -225,9 +223,6 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 
 // this determines whether we display video with PBJ or GPUImage
 @property (nonatomic) BOOL isFilterEnabled;
-
-// this determines whether we should include airbrush in the video effects chain
-@property (nonatomic) AirbrushFilterType airbrushFilterType;
 
 // this determines whether or not we do low light detection for video
 @property (nonatomic, getter=isDetectingLowLight) BOOL detectLowLight;
