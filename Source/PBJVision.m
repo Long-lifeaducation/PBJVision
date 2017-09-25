@@ -802,6 +802,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 {
     self.alyceFilter.colorFilter = ALYCEColorFilterNone;
     self.alyceFilter.videoStyle = ALYCEVideoStyleClassic;
+    [self.alyceFilter setupLoopingTimedLayouts:NO];
 }
 
 - (void)setupPreviewViews
