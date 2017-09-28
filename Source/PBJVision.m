@@ -758,8 +758,10 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
         _captureSessionDispatchQueue = dispatch_queue_create("PBJVisionSession", DISPATCH_QUEUE_SERIAL); // protects session
         _captureVideoDispatchQueue = dispatch_queue_create("PBJVisionVideo", DISPATCH_QUEUE_SERIAL); // protects capture
         dispatch_set_target_queue( _captureVideoDispatchQueue, dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_HIGH, 0 ) );
-        
-        _previewLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSession:nil];
+
+        // passing in a variable set to nil here instead of a literal nil somehow prevents a nullable compiler warning
+        AVCaptureSession *session = nil;
+        _previewLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSession:session];
         _previewLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
         
         _maximumCaptureDuration = kCMTimeInvalid;
