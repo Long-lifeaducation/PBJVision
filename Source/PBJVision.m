@@ -827,7 +827,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 #pragma mark - queue helper methods
 
-typedef void (^PBJVisionBlock)();
+typedef void (^PBJVisionBlock)(void);
 
 - (void)_enqueueBlockOnCaptureSessionQueue:(PBJVisionBlock)block
 {
@@ -1195,8 +1195,9 @@ typedef void (^PBJVisionBlock)();
         [self _setOrientationForConnection:videoConnection];
         
         // setup video stabilization, if available
-        if ([videoConnection isVideoStabilizationSupported])
-            [videoConnection setEnablesVideoStabilizationWhenAvailable:YES];
+        if ([videoConnection isVideoStabilizationSupported]) {
+            videoConnection.preferredVideoStabilizationMode = AVCaptureVideoStabilizationModeAuto;
+        }
 
         // discard late frames
         [_captureOutputVideo setAlwaysDiscardsLateVideoFrames:YES];
