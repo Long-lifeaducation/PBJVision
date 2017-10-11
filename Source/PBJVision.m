@@ -2198,8 +2198,8 @@ typedef void (^PBJVisionBlock)();
     
     if (_flags.recording && CMTIME_IS_INVALID(_audioRecordOffset)) {
         // this will grab the info need to compute _audioRecordOffset
-        if ([_delegate respondsToSelector:@selector(visionWillStartWritingVideo:)]) {
-            [_delegate visionWillStartWritingVideo:self];
+        if ([_delegate respondsToSelector:@selector(visionWillStartWritingVideo:fileURL:)]) {
+            [_delegate visionWillStartWritingVideo:self fileURL:_mediaWriter.outputURL];
         }
     }
     
