@@ -247,6 +247,7 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 - (void)pauseVideoCapture;
 - (void)resumeVideoCapture;
 - (void)endVideoCapture;
+- (void)restartVideoCapture;
 - (void)cancelVideoCapture;
 - (void)setPreviewFrameRate:(int)frameRate;
 

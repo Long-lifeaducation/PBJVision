@@ -233,6 +233,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @property (nonatomic, retain) __attribute__((NSObject)) CMFormatDescriptionRef outputVideoFormatDescription;
 @property (nonatomic, retain) __attribute__((NSObject)) CMFormatDescriptionRef outputAudioFormatDescription;
 
+@property (nonatomic) BOOL isRestartingVideoCapture;
+
 @end
 
 
@@ -2029,6 +2031,17 @@ typedef void (^PBJVisionBlock)();
     }];
 }
 
+- (void)restartVideoCapture
+{
+    if (self.isRestartingVideoCapture)
+    {
+        return;
+    }
+    
+    self.isRestartingVideoCapture = YES;
+    [self endVideoCapture];
+}
+
 - (void)cancelVideoCapture
 {
     DLog(@"cancel video capture");
@@ -2673,7 +2686,11 @@ typedef void (^PBJVisionBlock)();
             }
         }];
 
-
+        if (self.isRestartingVideoCapture)
+        {
+            self.isRestartingVideoCapture = NO;
+            [self startVideoCapture];
+        }
 
     }];
 }
