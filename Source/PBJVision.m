@@ -171,7 +171,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     
     CMTime _lastAudioTimestamp;
     
-    CMTime _audioRecordOffset;
+    CMTime _audioToVideoRecordStartOffset;
     
     CMTime _lastVideoDisplayTimestamp;
     CMTime _minDisplayDuration;
@@ -261,7 +261,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @synthesize maximumCaptureDuration = _maximumCaptureDuration;
 @synthesize detectLowLight = _detectLowLight;
 @synthesize luminanceValues = _luminanceValues;
-@synthesize audioRecordOffset = _audioRecordOffset;
+@synthesize audioToVideoRecordStartOffset = _audioToVideoRecordStartOffset;
 
 + (NSString*)hardwareString
 {
@@ -679,8 +679,8 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 - (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp
 {
     [self _enqueueBlockOnCaptureVideoQueue:^{
-        _audioRecordOffset = CMTimeSubtract(_startTimestamp, audioStartTimestamp);
-        DLog(@"_audioRecordOffset: %f", CMTimeGetSeconds(_audioRecordOffset));
+        _audioToVideoRecordStartOffset = CMTimeSubtract(_startTimestamp, audioStartTimestamp);
+        DLog(@"_audioToVideoRecordStartOffset: %f", CMTimeGetSeconds(_audioToVideoRecordStartOffset));
         
         if (CMTIME_IS_INVALID(_lastTimestamp)) {
             _lastTimestamp = audioStartTimestamp;
@@ -1939,7 +1939,7 @@ typedef void (^PBJVisionBlock)();
         _lastTimestamp = kCMTimeInvalid;
         //_lastTimestamp = _startTimestamp;
         _lastAudioTimestamp = kCMTimeInvalid;
-        _audioRecordOffset = kCMTimeInvalid;
+        _audioToVideoRecordStartOffset = kCMTimeInvalid;
         _totalPauseTime = kCMTimeZero;
         _lastPauseTimestamp = kCMTimeInvalid;
         
@@ -1994,7 +1994,7 @@ typedef void (^PBJVisionBlock)();
  
         DLog(@"resuming video capture");
        
-        //_audioRecordOffset = kCMTimeInvalid;
+        //_audioToVideoRecordStartOffset = kCMTimeInvalid;
         _flags.paused = NO;
         _flags.interrupted = NO;
         
@@ -2210,8 +2210,8 @@ typedef void (^PBJVisionBlock)();
 
     CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     
-    if (_flags.recording && CMTIME_IS_INVALID(_audioRecordOffset)) {
-        // this will grab the info need to compute _audioRecordOffset
+    if (_flags.recording && CMTIME_IS_INVALID(_audioToVideoRecordStartOffset)) {
+        // this will grab the info need to compute _audioToVideoRecordStartOffset
         if ([_delegate respondsToSelector:@selector(visionWillStartWritingVideo:fileURL:)]) {
             [_delegate visionWillStartWritingVideo:self fileURL:_mediaWriter.outputURL];
         }
