@@ -261,6 +261,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @synthesize maximumCaptureDuration = _maximumCaptureDuration;
 @synthesize detectLowLight = _detectLowLight;
 @synthesize luminanceValues = _luminanceValues;
+@synthesize audioRecordOffset = _audioRecordOffset;
 
 + (NSString*)hardwareString
 {
