@@ -681,6 +681,11 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     return nil;
 }
 
+- (NSTimeInterval)startDiffFromAudioStartTimestamp:(CMTime)audioStartTimestamp
+{
+    return CMTimeGetSeconds(CMTimeSubtract(_startTimestamp, audioStartTimestamp));
+}
+
 - (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp
 {
     if (CMTIME_IS_VALID(_startTimestamp))
