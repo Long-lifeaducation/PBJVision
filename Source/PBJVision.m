@@ -683,6 +683,10 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 - (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp
 {
+    if (CMTIME_IS_VALID(_startTimestamp))
+    {
+        _audioToVideoRecordStartOffset = CMTimeSubtract(_startTimestamp, audioStartTimestamp);
+    }
     [self _enqueueBlockOnCaptureVideoQueue:^{
         _audioToVideoRecordStartOffset = CMTimeSubtract(_startTimestamp, audioStartTimestamp);
         DLog(@"_audioToVideoRecordStartOffset: %f", CMTimeGetSeconds(_audioToVideoRecordStartOffset));
