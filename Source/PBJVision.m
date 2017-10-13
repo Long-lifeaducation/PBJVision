@@ -348,6 +348,11 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     return _flags.thumbnailEnabled;
 }
 
+- (NSURL *)captureOutputURL
+{
+    return _mediaWriter.outputURL;
+}
+
 - (Float64)capturedAudioSeconds
 {
     if (_mediaWriter && CMTIME_IS_VALID(_mediaWriter.audioTimestamp)) {

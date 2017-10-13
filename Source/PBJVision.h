@@ -240,6 +240,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 @property (nonatomic, readonly) Float64 averageISO;
 @property (nonatomic) CMTime audioToVideoRecordStartOffset;
 
+@property (nonatomic, readonly) NSURL *captureOutputURL;
+
 - (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp;
 - (void)setAudioStopTimestamp:(CMTime)audioStopTimestamp;
 

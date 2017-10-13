@@ -670,7 +670,7 @@ typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
                         [_delegate mediaWriterDidFinishRecording:self];
                         break;
                     case PBJMediaWriterStatusFailed:
-                        [_delegate mediaWriterDidObserveAssetWriterFailed:self withError:nil];
+                        [_delegate mediaWriterDidObserveAssetWriterFailed:self withError:error];
                         break;
                     default:
                         break;
