@@ -40,7 +40,6 @@
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #import <client-magic/MagicLogger.h>
-#import <client-magic/UIDevice+Magic.h>
 
 #import "GPUImage.h"
 
@@ -817,6 +816,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 {
     self.alyceFilter.colorFilter = ALYCEColorFilterNone;
     self.alyceFilter.videoStyle = ALYCEVideoStyleClassic;
+    [self.alyceFilter setupLoopingTimedLayouts:NO];
 }
 
 - (void)setupPreviewViews
@@ -840,7 +840,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 
 #pragma mark - queue helper methods
 
-typedef void (^PBJVisionBlock)();
+typedef void (^PBJVisionBlock)(void);
 
 - (void)_enqueueBlockOnCaptureSessionQueue:(PBJVisionBlock)block
 {
@@ -931,20 +931,20 @@ typedef void (^PBJVisionBlock)();
     // pixel density. iphone 6+ has a different density than any other device, and it's
     // not reflected in the UIScreen scale because we aren't fully supporting that
     // screen size yet (the OS simulates it using a scale of 2 when the actual device pixel ratio is 2.6)
-    
-    if ([UIDevice isIOSVersion8x])
+
+    if (@available(iOS 9, *))
+    {
+        self.screenScale = [UIScreen mainScreen].scale;
+    }
+    else
     {
         // Ensures proper scale regardless of zoom setting on iPhone display zoom setting.
         // Relevant for both iPhone 6 and 6Plus models. At some point we can stop initing
         // with default scale method above (when iOS8 is our min deployment target).
-        
+
         self.screenScale = [UIScreen mainScreen].nativeScale;
     }
-    else
-    {
-        self.screenScale = [UIScreen mainScreen].scale;
-    }
-    
+
     // add notification observers
     NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
     
@@ -1208,8 +1208,9 @@ typedef void (^PBJVisionBlock)();
         [self _setOrientationForConnection:videoConnection];
         
         // setup video stabilization, if available
-        if ([videoConnection isVideoStabilizationSupported])
-            [videoConnection setEnablesVideoStabilizationWhenAvailable:YES];
+        if ([videoConnection isVideoStabilizationSupported]) {
+            videoConnection.preferredVideoStabilizationMode = AVCaptureVideoStabilizationModeAuto;
+        }
 
         // discard late frames
         [_captureOutputVideo setAlwaysDiscardsLateVideoFrames:YES];
