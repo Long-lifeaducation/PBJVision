@@ -28,6 +28,7 @@
 #import "PBJMediaWriter.h"
 #import "PBJGLProgram.h"
 #import "GPUImageSplitFilter.h"
+#import "MagicFileManager.h"
 #include "BufferCopy.h"
 
 #include "GPUImageALYCEFilter.h"
@@ -1903,9 +1904,8 @@ typedef void (^PBJVisionBlock)(void);
     
     if (_flags.recording || _flags.paused)
         return;
-    
     NSString *guid = [[NSUUID new] UUIDString];
-    NSString *outputPath = [NSString stringWithFormat:@"%@video_%@.mp4", NSTemporaryDirectory(), guid];
+    NSString *outputPath = [NSString stringWithFormat:@"%@video_%@.mp4", [MagicFileManager uploadsDirectory], guid];
     NSURL *outputURL = [NSURL fileURLWithPath:outputPath];
     if ([[NSFileManager defaultManager] fileExistsAtPath:outputPath]) {
         NSError *error = nil;
