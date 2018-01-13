@@ -313,6 +313,11 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     return _flags.recording;
 }
 
+- (BOOL)isPreviewing
+{
+    return _flags.previewRunning;
+}
+
 - (BOOL)isPaused
 {
     return _flags.paused;

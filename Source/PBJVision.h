@@ -215,6 +215,7 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 @property (nonatomic, readonly) BOOL supportsVideoCapture;
 @property (nonatomic, readonly) BOOL canCaptureVideo;
 @property (nonatomic, readonly, getter=isRecording) BOOL recording;
+@property (nonatomic, readonly, getter=isPreviewing) BOOL isPreviewing;
 @property (nonatomic, readonly, getter=isPaused) BOOL paused;
 
 @property (nonatomic, getter=isVideoRenderingEnabled) BOOL videoRenderingEnabled;
