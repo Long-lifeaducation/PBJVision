@@ -171,7 +171,7 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     
     CMTime _lastAudioTimestamp;
     
-    CMTime _audioToVideoRecordStartOffset;
+    BOOL makeRecordingStartCallback;
     
     CMTime _lastVideoDisplayTimestamp;
     CMTime _minDisplayDuration;
@@ -261,7 +261,6 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 @synthesize maximumCaptureDuration = _maximumCaptureDuration;
 @synthesize detectLowLight = _detectLowLight;
 @synthesize luminanceValues = _luminanceValues;
-@synthesize audioToVideoRecordStartOffset = _audioToVideoRecordStartOffset;
 
 + (NSString*)hardwareString
 {
@@ -694,9 +693,11 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
 - (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp
 {
     [self _enqueueBlockOnCaptureVideoQueue:^{
-        _audioToVideoRecordStartOffset = CMTimeSubtract(_startTimestamp, audioStartTimestamp);
-        DLog(@"_audioToVideoRecordStartOffset: %f", CMTimeGetSeconds(_audioToVideoRecordStartOffset));
-        
+        CMTime audioOffset = CMTimeSubtract(_startTimestamp, audioStartTimestamp);
+        DLog(@"AudioVideoRecordOffset: %f", CMTimeGetSeconds(audioOffset));
+
+        makeRecordingStartCallback = NO;
+
         if (CMTIME_IS_INVALID(_lastTimestamp)) {
             _lastTimestamp = audioStartTimestamp;
             _startTimestamp = audioStartTimestamp;
@@ -1905,12 +1906,10 @@ typedef void (^PBJVisionBlock)(void);
         return;
     }
     
-    DLog(@"setting up video capture");
-    
     if (_flags.recording || _flags.paused)
         return;
     NSString *guid = [[NSUUID new] UUIDString];
-    NSString *outputPath = [NSString stringWithFormat:@"%@video_%@.mp4", [MagicFileManager uploadsDirectory], guid];
+    NSString *outputPath = [[MagicFileManager uploadsDirectory] stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.mp4", guid]];
     NSURL *outputURL = [NSURL fileURLWithPath:outputPath];
     if ([[NSFileManager defaultManager] fileExistsAtPath:outputPath]) {
         NSError *error = nil;
@@ -1953,9 +1952,8 @@ typedef void (^PBJVisionBlock)(void);
     [self _enqueueBlockOnCaptureVideoQueue:^{
         _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
         _lastTimestamp = kCMTimeInvalid;
-        //_lastTimestamp = _startTimestamp;
         _lastAudioTimestamp = kCMTimeInvalid;
-        _audioToVideoRecordStartOffset = kCMTimeInvalid;
+        makeRecordingStartCallback = YES;
         _totalPauseTime = kCMTimeZero;
         _lastPauseTimestamp = kCMTimeInvalid;
         
@@ -2010,7 +2008,6 @@ typedef void (^PBJVisionBlock)(void);
  
         DLog(@"resuming video capture");
        
-        //_audioToVideoRecordStartOffset = kCMTimeInvalid;
         _flags.paused = NO;
         _flags.interrupted = NO;
         
@@ -2224,10 +2221,8 @@ typedef void (^PBJVisionBlock)(void);
         }
     }
 
-    CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-    
-    if (_flags.recording && CMTIME_IS_INVALID(_audioToVideoRecordStartOffset)) {
-        // this will grab the info need to compute _audioToVideoRecordStartOffset
+    // this will kick off the performance in SingingViewController
+    if (_flags.recording && makeRecordingStartCallback) {
         if ([_delegate respondsToSelector:@selector(visionWillStartWritingVideo:fileURL:)]) {
             [_delegate visionWillStartWritingVideo:self fileURL:_mediaWriter.outputURL];
         }
@@ -2283,7 +2278,8 @@ typedef void (^PBJVisionBlock)(void);
             _lastAudioTimestamp = time;
         }
     }
-    
+
+    CMTime currentTimestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
     if (!_flags.interrupted && CMTIME_IS_VALID(currentTimestamp) && CMTIME_IS_VALID(_startTimestamp) && CMTIME_IS_VALID(_maximumCaptureDuration)) {
         
         if (CMTIME_IS_VALID(_lastTimestamp)) {
@@ -2668,7 +2664,6 @@ typedef void (^PBJVisionBlock)(void);
             }
         }
 #endif
-
         _mediaWriter = nil;
 
         [self _enqueueBlockOnMainQueue:^{
