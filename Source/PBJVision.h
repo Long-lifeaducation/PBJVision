@@ -242,6 +242,7 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 @property (nonatomic) CMTime audioToVideoRecordStartOffset;
 
 @property (nonatomic, readonly) NSURL *captureOutputURL;
+@property (nonatomic, readonly) BOOL didWriteVideo;
 
 - (NSTimeInterval)startDiffFromAudioStartTimestamp:(CMTime)audioStartTimestamp;
 - (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp;

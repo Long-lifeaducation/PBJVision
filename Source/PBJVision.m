@@ -357,6 +357,12 @@ typedef NS_ENUM(GLint, PBJVisionUniformLocationTypes)
     return _mediaWriter.outputURL;
 }
 
+// tells us if we were able to capture and write video during the previous capture session
+- (BOOL)didWriteVideo
+{
+    return _flags.videoWritten;
+}
+
 - (Float64)capturedAudioSeconds
 {
     if (_mediaWriter && CMTIME_IS_VALID(_mediaWriter.audioTimestamp)) {
