@@ -1905,7 +1905,7 @@ typedef void (^PBJVisionBlock)(void);
     return [self supportsVideoCapture] && [self isCaptureSessionActive] && !_flags.changingModes && isDiskSpaceAvailable;
 }
 
-- (void)setupVideoCapture
+- (void)setupVideoCapture:(NSString*)outputPath
 {
     if (![self _canSessionCaptureWithOutput:_currentOutput]) {
         DLog(@"session is not setup properly for capture");
@@ -1914,8 +1914,15 @@ typedef void (^PBJVisionBlock)(void);
     
     if (_flags.recording || _flags.paused)
         return;
-    NSString *guid = [[NSUUID new] UUIDString];
-    NSString *outputPath = [[MagicFileManager uploadsDirectory] stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.mp4", guid]];
+    
+    if (!outputPath || [outputPath length] == 0) {
+        return;
+    }
+    
+    if (_mediaWriter)
+        _mediaWriter.delegate = nil;
+    
+    // some checks on the output locaiton:
     NSURL *outputURL = [NSURL fileURLWithPath:outputPath];
     if ([[NSFileManager defaultManager] fileExistsAtPath:outputPath]) {
         NSError *error = nil;
@@ -1924,13 +1931,7 @@ typedef void (^PBJVisionBlock)(void);
             return;
         }
     }
-    
-    if (!outputPath || [outputPath length] == 0)
-        return;
-    
-    if (_mediaWriter)
-        _mediaWriter.delegate = nil;
-    
+
     
     _mediaWriter = [[PBJMediaWriter alloc] initWithOutputURL:outputURL];
 
@@ -1947,11 +1948,9 @@ typedef void (^PBJVisionBlock)(void);
     _flags.videoWritten = NO;
 }
 
-- (void)startVideoCapture
+- (void)startVideoCapture:(NSString*)outputPath
 {
-    if (!_mediaWriter) {
-        [self setupVideoCapture];
-    }
+    [self setupVideoCapture:outputPath];
     
     DLog(@"starting video capture");
     
@@ -2707,7 +2706,7 @@ typedef void (^PBJVisionBlock)(void);
         if (self.isRestartingVideoCapture)
         {
             self.isRestartingVideoCapture = NO;
-            [self startVideoCapture];
+            [self startVideoCapture:[_mediaWriter.outputURL absoluteString]];
         }
 
     }];

@@ -248,8 +248,8 @@ static CGFloat const PBJVideoBitRate1280x750 = 5000000 * 8;     // 40bmps
 - (void)setAudioStartTimestamp:(CMTime)audioStartTimestamp;
 - (void)setAudioStopTimestamp:(CMTime)audioStopTimestamp;
 
-- (void)setupVideoCapture;
-- (void)startVideoCapture;
+- (void)setupVideoCapture:(NSString*)outputPath;
+- (void)startVideoCapture:(NSString*)outputPath;
 - (void)pauseVideoCapture;
 - (void)resumeVideoCapture;
 - (void)endVideoCapture;
