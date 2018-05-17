@@ -618,6 +618,13 @@ typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
                 @synchronized( self )
                 {
                     NSError *error = _assetWriter.error;
+//                    errorTester++;
+                    // uncomment this to test failed video WRITE errors
+//                    if (errorTester > 2) {
+//                        error = [[NSError alloc] init];
+//                        errorTester = 0;
+//                    }
+
                     if ( error ) {
                         [self transitionToStatus:PBJMediaWriterStatusFailed error:error];
                     }
@@ -631,6 +638,8 @@ typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
     });
 
 }
+
+// int errorTester = 0;
 
 - (void)transitionToStatus:(PBJMediaWriterStatus)newStatus error:(NSError *)error
 {
