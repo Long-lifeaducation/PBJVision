@@ -2610,8 +2610,8 @@ typedef void (^PBJVisionBlock)(void);
 - (void)mediaWriterDidObserveAssetWriterFailed:(PBJMediaWriter *)mediaWriter withError:(NSError *)error
 {
     [self _executeBlockOnMainQueue:^{
-        if ([_delegate respondsToSelector:@selector(visionCaptureDidFail:)]) {
-            [_delegate visionCaptureDidFail:self];
+        if ([_delegate respondsToSelector:@selector(visionCaptureDidFail:error:)]) {
+            [_delegate visionCaptureDidFail:self error:error];
         }
     }];
     
@@ -2773,8 +2773,8 @@ typedef void (^PBJVisionBlock)(void);
         _totalISO = 0;
         if(![_mediaWriter startWritingAtTime:time]) {
             [self _executeBlockOnMainQueue:^{
-                if ([_delegate respondsToSelector:@selector(visionCaptureDidFail:)]) {
-                    [_delegate visionCaptureDidFail:self];
+                if ([_delegate respondsToSelector:@selector(visionCaptureDidFail:error:)]) {
+                    [_delegate visionCaptureDidFail:self error:_mediaWriter.error];
                 }
             }];
             return;
