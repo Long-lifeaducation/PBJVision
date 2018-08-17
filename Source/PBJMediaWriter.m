@@ -25,6 +25,7 @@
 
 #import "PBJMediaWriter.h"
 #import "PBJVisionUtilities.h"
+#import "Crashlytics+Magic.h"
 
 #import <UIKit/UIDevice.h>
 #import <MobileCoreServices/UTCoreTypes.h>
@@ -556,7 +557,7 @@ typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
 
 #pragma mark - dw
 
-- (void)finishWriting
+- (void)finishWriting:(NSString*)debugCallSite
 {
     BOOL shouldFinishWriting = NO;
     @synchronized(self)
@@ -566,9 +567,12 @@ typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
             case PBJMediaWriterStatusIdle:
             case PBJMediaWriterStausPreparingToRecord:
             case PBJMediaWriterStatusFlushInFlightBuffers:
-            case PBJMediaWriterStatusFinished:
-                @throw [NSException exceptionWithName:NSInternalInconsistencyException reason:@"Not recording" userInfo:nil];
+            case PBJMediaWriterStatusFinished: {
+                NSString* reason = [NSString stringWithFormat:@"state:%d caller%@", _status, debugCallSite];
+                NSError* error = [[NSError alloc] initWithDomain:@"bad media writer state" code:0 userInfo:@{@"description":reason}];
+                [Crashlytics logHandledError:error];
                 break;
+            }
             case PBJMediaWriterStatusFailed:
                 NSLog( @"nothing to do" );
                 break;

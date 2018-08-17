@@ -2024,7 +2024,7 @@ typedef void (^PBJVisionBlock)(void);
     }];
 }
 
-- (void)endVideoCapture
+- (void)endVideoCapture:(NSString*)debugCallSite
 {    
     DLog(@"ending video capture");
     
@@ -2046,7 +2046,7 @@ typedef void (^PBJVisionBlock)(void);
         _lastTimestamp = kCMTimeInvalid;
         _startTimestamp = CMClockGetTime(CMClockGetHostTimeClock());
 
-        [_mediaWriter finishWriting]; // will call delegate when finished
+        [_mediaWriter finishWriting:debugCallSite]; // will call delegate when finished
     }];
 }
 
@@ -2058,7 +2058,7 @@ typedef void (^PBJVisionBlock)(void);
     }
     
     self.isRestartingVideoCapture = YES;
-    [self endVideoCapture];
+    [self endVideoCapture:@"restart camera"];
 }
 
 - (void)cancelVideoCapture
@@ -2070,7 +2070,7 @@ typedef void (^PBJVisionBlock)(void);
         _flags.paused = NO;
         _saveOutput = NO;
         _setPixelBufferInfo = NO;
-        [_mediaWriter finishWriting]; // will call delegate when finished
+        [_mediaWriter finishWriting:@"cancel capture"]; // will call delegate when finished
     }];
 }
 
@@ -2298,7 +2298,7 @@ typedef void (^PBJVisionBlock)(void);
         if (CMTIME_IS_VALID(currentCaptureDuration)) {
             if (CMTIME_COMPARE_INLINE(currentCaptureDuration, >=, _maximumCaptureDuration)) {
                 [self _enqueueBlockOnMainQueue:^{
-                    [self endVideoCapture];
+                    [self endVideoCapture:@"max capture duration"];
                 }];
             }
         }
@@ -2436,7 +2436,7 @@ typedef void (^PBJVisionBlock)(void);
         DLog(@"session was stopped");
         
         if (_flags.recording)
-            [self endVideoCapture];
+            [self endVideoCapture:@"session stopped"];
     
         [self _enqueueBlockOnMainQueue:^{
             if ([_delegate respondsToSelector:@selector(visionSessionDidStop:)]) {

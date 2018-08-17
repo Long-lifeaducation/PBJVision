@@ -11,5 +11,6 @@ Pod::Spec.new do |s|
   s.source_files = 'Source'
   s.resources    = 'Source/Shaders/*'
   s.requires_arc = true
+  s.dependency 'client-magic'
   s.pod_target_xcconfig = { 'CLANG_WARN_UNGUARDED_AVAILABILITY' => 'YES' }
 end
