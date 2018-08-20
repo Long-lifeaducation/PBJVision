@@ -568,8 +568,8 @@ typedef NS_ENUM( NSInteger, PBJMediaWriterStatus)
             case PBJMediaWriterStausPreparingToRecord:
             case PBJMediaWriterStatusFlushInFlightBuffers:
             case PBJMediaWriterStatusFinished: {
-                NSString* reason = [NSString stringWithFormat:@"state:%d caller%@", _status, debugCallSite];
-                NSError* error = [[NSError alloc] initWithDomain:@"bad media writer state" code:0 userInfo:@{@"description":reason}];
+                NSString* reason = [NSString stringWithFormat:@"bad state:%d caller%@", _status, debugCallSite];
+                NSError* error = [[NSError alloc] initWithDomain:@"PBJMediaWriter" code:0 userInfo:@{@"description":reason}];
                 [Crashlytics logHandledError:error];
                 break;
             }
